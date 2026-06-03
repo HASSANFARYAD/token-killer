@@ -1,5 +1,8 @@
 const vscode = require('vscode');
 const { execFile } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 let statusItem;
 let refreshTimer;
@@ -25,20 +28,47 @@ function formatTokens(tokens) {
 }
 
 function rtkEnv() {
+  const npmGlobal = path.join(os.homedir(), 'AppData', 'Roaming', 'npm');
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+  const pathValue = process.env[pathKey] || '';
+  const nextPath = process.platform === 'win32' && !pathValue.includes(npmGlobal)
+    ? `${npmGlobal};${pathValue}`
+    : pathValue;
+
   return {
     ...process.env,
+    [pathKey]: nextPath,
     RTK_SESSION_ID: sessionId,
     RTK_SESSION_LABEL: sessionLabel
   };
 }
 
-function runRtkStatus() {
+function commandCandidates() {
   const configuredCommand = config().get('command', 'rtk-node');
-  const command = process.platform === 'win32' && configuredCommand === 'rtk-node'
-    ? 'rtk-node.cmd'
-    : configuredCommand;
+  const candidates = [];
+  const push = (command, argsPrefix = []) => {
+    if (!candidates.some((candidate) => candidate.command === command && candidate.argsPrefix.join('\0') === argsPrefix.join('\0'))) {
+      candidates.push({ command, argsPrefix });
+    }
+  };
+
+  if (configuredCommand) push(configuredCommand);
+  if (process.platform === 'win32') {
+    push('rtk-node.cmd');
+    push(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'rtk-node.cmd'));
+  } else {
+    push('rtk-node');
+  }
+
+  const localCli = path.join(workspaceCwd(), 'bin', 'rtk-node.js');
+  if (fs.existsSync(localCli)) push(process.execPath, [localCli]);
+
+  return candidates;
+}
+
+function execRtkCandidate(candidate) {
   return new Promise((resolve, reject) => {
-    execFile(command, ['status', '--json'], {
+    execFile(candidate.command, [...candidate.argsPrefix, 'status', '--json'], {
       cwd: workspaceCwd(),
       env: rtkEnv(),
       windowsHide: true,
@@ -55,6 +85,18 @@ function runRtkStatus() {
       }
     });
   });
+}
+
+async function runRtkStatus() {
+  const errors = [];
+  for (const candidate of commandCandidates()) {
+    try {
+      return await execRtkCandidate(candidate);
+    } catch (error) {
+      errors.push(`${candidate.command}: ${error.message}`);
+    }
+  }
+  throw new Error(errors.join('\n'));
 }
 
 async function refreshStatus() {
