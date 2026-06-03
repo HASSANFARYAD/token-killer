@@ -131,6 +131,43 @@ Show approximate saved tokens:
 rtk-node gain
 ```
 
+Show savings for the current chat/session:
+
+```sh
+rtk-node session
+rtk-node status --json
+```
+
+`rtk-node` groups session analytics by `RTK_SESSION_ID` when it is set. This lets a CLI wrapper, editor integration, or VS Code extension show savings for the active chat instead of only lifetime totals:
+
+```sh
+export RTK_SESSION_ID="chat-$(date +%s)"
+export RTK_SESSION_LABEL="Current chat"
+```
+
+PowerShell:
+
+```powershell
+$env:RTK_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+$env:RTK_SESSION_LABEL = "Current chat"
+```
+
+For status bars and editor integrations, poll:
+
+```sh
+rtk-node status --json
+```
+
+The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `RTK_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `rtk-node status --json`.
+
+An initial VS Code status-bar extension lives in:
+
+```text
+vscode-extension/
+```
+
+It polls `rtk-node status --json` automatically and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled.
+
 Analytics are stored locally in:
 
 ```text

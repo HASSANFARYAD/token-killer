@@ -1,7 +1,7 @@
 import { filterOutput } from './filters.js';
 import { installCodexInstructions, installHook, uninstallCodexInstructions, uninstallHook } from './hooks.js';
 import { loadConfig, ensureConfig, configPath } from './config.js';
-import { formatGain, recordRun } from './stats.js';
+import { analyticsSnapshot, currentSessionId, formatGain, formatSessionGain, recordRun } from './stats.js';
 import { runCommand } from './runner.js';
 import { runInternal } from './internal.js';
 import { byteLength, lineCount } from './utils.js';
@@ -15,7 +15,8 @@ function parse(argv) {
     hookOnly: false,
     global: false,
     codex: false,
-    show: false
+    show: false,
+    json: false
   };
   const positional = [];
   let i = 0;
@@ -43,6 +44,11 @@ function parse(argv) {
       else if (arg === '--uninstall') flags.uninstall = true;
       else positional.push(arg);
     }
+  } else if (command === 'status' || command === 'session') {
+    for (const arg of rest) {
+      if (arg === '--json') flags.json = true;
+      else positional.push(arg);
+    }
   } else {
     positional.push(...rest);
   }
@@ -62,6 +68,8 @@ Usage:
   rtk-node init -g --uninstall
   rtk-node uninstall
   rtk-node gain
+  rtk-node session [--json]
+  rtk-node status [--json]
   rtk-node config
 
 Flags:
@@ -140,6 +148,30 @@ export async function main(argv) {
 
   if (subcommand === 'gain') {
     console.log(formatGain());
+    return;
+  }
+
+  if (subcommand === 'session') {
+    if (flags.json) {
+      console.log(JSON.stringify(analyticsSnapshot().session, null, 2));
+    } else {
+      console.log(formatSessionGain());
+    }
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const snapshot = analyticsSnapshot();
+    if (flags.json) {
+      console.log(JSON.stringify(snapshot, null, 2));
+    } else {
+      console.log([
+        `RTK status`,
+        `session_id: ${currentSessionId()}`,
+        `session_saved: ${snapshot.session.savedTokens} tokens (${snapshot.session.savedPercent.toFixed(1)}%)`,
+        `total_saved: ${snapshot.total.savedTokens} tokens (${snapshot.total.savedPercent.toFixed(1)}%)`
+      ].join('\n'));
+    }
     return;
   }
 

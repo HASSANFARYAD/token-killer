@@ -22,3 +22,15 @@ test('codex init flags are parsed after init', () => {
   assert.equal(parsed.flags.uninstall, true);
   assert.deepEqual(parsed.positional, ['init']);
 });
+
+test('status json flag is parsed after status', () => {
+  const parsed = parseForTest(['status', '--json']);
+  assert.equal(parsed.flags.json, true);
+  assert.deepEqual(parsed.positional, ['status']);
+});
+
+test('session json flag is parsed after session', () => {
+  const parsed = parseForTest(['session', '--json']);
+  assert.equal(parsed.flags.json, true);
+  assert.deepEqual(parsed.positional, ['session']);
+});
