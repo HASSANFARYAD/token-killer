@@ -1,10 +1,10 @@
 # RTK Token Savings for VS Code
 
-Shows RTK token savings in the VS Code status bar.
+Shows RTK token savings in the VS Code status bar. The extension bundles the RTK CLI, so users do not need to install `rtk-node` separately for the status bar to work.
 
 ## How It Works
 
-The extension runs this command internally every few seconds:
+The extension runs its bundled RTK CLI internally every few seconds, equivalent to:
 
 ```sh
 rtk-node status --json
@@ -22,7 +22,7 @@ vsce package
 code --install-extension rtk-token-savings-0.1.0.vsix
 ```
 
-Make sure `rtk-node` is installed and available on `PATH`.
+Install the generated `.vsix`; no separate `rtk-node` install is required for VS Code status tracking.
 
 ## Commands
 
@@ -32,7 +32,7 @@ Make sure `rtk-node` is installed and available on `PATH`.
 
 ## Settings
 
-- `rtk.command`: command used to run RTK, default `rtk-node`.
+- `rtk.command`: optional external RTK command. Leave empty to use the bundled RTK CLI.
 - `rtk.refreshIntervalMs`: status refresh interval, default `3000`.
 - `rtk.defaultAgentCommand`: default terminal command, default `codex`.
 - `rtk.showTotalWhenNoSession`: show lifetime totals until the session has runs.

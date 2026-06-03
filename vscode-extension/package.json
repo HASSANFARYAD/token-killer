@@ -10,6 +10,13 @@
   "categories": [
     "Other"
   ],
+  "files": [
+    "extension.js",
+    "README.md",
+    "LICENSE",
+    "bin",
+    "src"
+  ],
   "activationEvents": [
     "onStartupFinished",
     "onCommand:rtk.refresh",
@@ -37,8 +44,8 @@
       "properties": {
         "rtk.command": {
           "type": "string",
-          "default": "rtk-node",
-          "description": "Command used to run RTK."
+          "default": "",
+          "description": "Optional external RTK command. Leave empty to use the RTK CLI bundled with this extension."
         },
         "rtk.refreshIntervalMs": {
           "type": "number",

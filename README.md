@@ -160,13 +160,13 @@ rtk-node status --json
 
 The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `RTK_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `rtk-node status --json`.
 
-An initial VS Code status-bar extension lives in:
+An initial all-in-one VS Code status-bar extension lives in:
 
 ```text
 vscode-extension/
 ```
 
-It polls `rtk-node status --json` automatically and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled.
+It bundles the RTK CLI, polls RTK status automatically, and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled. Users do not need a separate global `rtk-node` install for the VS Code status bar.
 
 Analytics are stored locally in:
 

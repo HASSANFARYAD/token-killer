@@ -44,7 +44,7 @@ function rtkEnv() {
 }
 
 function commandCandidates() {
-  const configuredCommand = config().get('command', 'rtk-node');
+  const configuredCommand = config().get('command', '');
   const candidates = [];
   const push = (command, argsPrefix = []) => {
     if (!candidates.some((candidate) => candidate.command === command && candidate.argsPrefix.join('\0') === argsPrefix.join('\0'))) {
@@ -52,6 +52,8 @@ function commandCandidates() {
     }
   };
 
+  const bundledCli = path.join(__dirname, 'bin', 'rtk-node.js');
+  if (fs.existsSync(bundledCli)) push(process.execPath, [bundledCli]);
   if (configuredCommand) push(configuredCommand);
   if (process.platform === 'win32') {
     push('rtk-node.cmd');
@@ -60,8 +62,8 @@ function commandCandidates() {
     push('rtk-node');
   }
 
-  const localCli = path.join(workspaceCwd(), 'bin', 'rtk-node.js');
-  if (fs.existsSync(localCli)) push(process.execPath, [localCli]);
+  const workspaceCli = path.join(workspaceCwd(), 'bin', 'rtk-node.js');
+  if (fs.existsSync(workspaceCli)) push(process.execPath, [workspaceCli]);
 
   return candidates;
 }
