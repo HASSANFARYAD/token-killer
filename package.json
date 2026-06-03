@@ -1,0 +1,33 @@
+{
+  "name": "rtk-node",
+  "version": "0.1.0",
+  "description": "Thin command proxy that compresses command output for AI coding agents.",
+  "type": "module",
+  "bin": {
+    "rtk-node": "./bin/rtk-node.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "install.sh",
+    "install.ps1",
+    "uninstall.sh",
+    "uninstall.ps1",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "cli",
+    "proxy",
+    "tokens",
+    "ai",
+    "compression"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
