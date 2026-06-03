@@ -66,6 +66,14 @@ function commandCandidates() {
   return candidates;
 }
 
+function bundledCliCommand() {
+  const bundledCli = path.join(__dirname, 'bin', 'rtk-node.js');
+  if (fs.existsSync(bundledCli)) {
+    return `${JSON.stringify(process.execPath)} ${JSON.stringify(bundledCli)}`;
+  }
+  return process.platform === 'win32' ? 'rtk-node.cmd' : 'rtk-node';
+}
+
 function execRtkCandidate(candidate) {
   return new Promise((resolve, reject) => {
     execFile(candidate.command, [...candidate.argsPrefix, 'status', '--json'], {
@@ -170,7 +178,7 @@ async function startAgentTerminal() {
     }
   });
   terminal.show();
-  terminal.sendText(command);
+  terminal.sendText(`${bundledCliCommand()} agent ${command}`);
   await refreshStatus();
 }
 

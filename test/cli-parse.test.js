@@ -34,3 +34,9 @@ test('session json flag is parsed after session', () => {
   assert.equal(parsed.flags.json, true);
   assert.deepEqual(parsed.positional, ['session']);
 });
+
+test('agent no summary flag is parsed after agent', () => {
+  const parsed = parseForTest(['agent', '--no-summary', 'codex', '--version']);
+  assert.equal(parsed.flags.noSummary, true);
+  assert.deepEqual(parsed.positional, ['agent', 'codex', '--version']);
+});

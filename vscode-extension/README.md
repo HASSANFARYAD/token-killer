@@ -10,7 +10,7 @@ The extension runs this command internally every few seconds:
 rtk-node status --json
 ```
 
-It also provides `RTK: Start Agent Terminal`, which opens a VS Code terminal with `RTK_SESSION_ID` and `RTK_SESSION_LABEL` set. Commands run through `rtk-node` in that terminal are counted against the active VS Code session.
+It also provides `RTK: Start Agent Terminal`, which opens a VS Code terminal through the bundled `rtk-node agent <command>` wrapper. Commands run through `rtk-node` in that terminal are counted against the active VS Code session.
 
 ## Development Install
 
