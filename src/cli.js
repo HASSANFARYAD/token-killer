@@ -19,7 +19,8 @@ function parse(argv) {
     codex: false,
     show: false,
     json: false,
-    noSummary: false
+    noSummary: false,
+    rtkCommand: 'rtk-node'
   };
   const positional = [];
   let i = 0;
@@ -40,12 +41,17 @@ function parse(argv) {
   const rest = argv.slice(i + 1);
 
   if (command === 'init') {
-    for (const arg of rest) {
+    for (let j = 0; j < rest.length; j += 1) {
+      const arg = rest[j];
       if (arg === '--hook-only') flags.hookOnly = true;
       else if (arg === '-g' || arg === '--global') flags.global = true;
       else if (arg === '--codex') flags.codex = true;
       else if (arg === '--show') flags.show = true;
       else if (arg === '--uninstall') flags.uninstall = true;
+      else if (arg === '--command') {
+        flags.rtkCommand = rest[j + 1] || flags.rtkCommand;
+        j += 1;
+      }
       else positional.push(arg);
     }
   } else if (command === 'status' || command === 'session') {
@@ -72,7 +78,7 @@ function help() {
 
 Usage:
   rtk-node <command> [args...]
-  rtk-node init [-g] [--hook-only]
+  rtk-node init [-g] [--hook-only] [--command <rtk-command>]
   rtk-node init -g --codex
   rtk-node init -g --uninstall
   rtk-node uninstall
@@ -168,13 +174,13 @@ export async function main(argv) {
       const codex = installCodexInstructions({ global: flags.global });
       console.log(`Installed Codex RTK instructions in ${codex.root}`);
       if (!flags.hookOnly && process.platform !== 'win32') {
-        const hook = installHook({ global: flags.global, hookOnly: flags.hookOnly });
+        const hook = installHook({ global: flags.global, hookOnly: flags.hookOnly, rtkCommand: flags.rtkCommand });
         console.log(`Installed shell hook in ${hook.profile}`);
       } else if (process.platform === 'win32') {
         console.log('Native Windows Codex mode uses AGENTS.md/RTK.md instructions. Use WSL for shell auto-rewrite.');
       }
     } else {
-      const result = installHook({ global: flags.global, hookOnly: flags.hookOnly });
+      const result = installHook({ global: flags.global, hookOnly: flags.hookOnly, rtkCommand: flags.rtkCommand });
       console.log(`Installed rtk-node hook in ${result.profile}`);
       console.log('Restart your shell or source the profile for changes to take effect.');
     }

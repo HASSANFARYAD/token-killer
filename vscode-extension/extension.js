@@ -11,6 +11,7 @@ let sessionLabel;
 let dashboardPanel;
 let lastSnapshot;
 let lastError;
+let followWorkspaceSession = true;
 
 function workspaceCwd() {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
@@ -30,6 +31,11 @@ function workspaceSessionId() {
 
 function workspaceSessionLabel() {
   return `Workspace ${path.basename(workspaceCwd())}`;
+}
+
+function useWorkspaceSession() {
+  sessionId = workspaceSessionId();
+  sessionLabel = workspaceSessionLabel();
 }
 
 function nodeCommand() {
@@ -152,6 +158,10 @@ async function runRtkStatus() {
 
 async function refreshStatus() {
   if (!statusItem) return;
+  if (followWorkspaceSession && config().get('followWorkspacePath', true) && sessionId !== workspaceSessionId()) {
+    useWorkspaceSession();
+    await contextStateSet();
+  }
 
   try {
     const snapshot = await runRtkStatus();
@@ -191,6 +201,7 @@ function startTimer(context) {
 }
 
 async function newSession() {
+  followWorkspaceSession = false;
   sessionId = makeSessionId();
   sessionLabel = `VS Code ${new Date().toLocaleTimeString()}`;
   await contextStateSet();
@@ -198,8 +209,66 @@ async function newSession() {
   vscode.window.showInformationMessage(`RTK session started: ${sessionLabel}`);
 }
 
+async function resetToWorkspaceSession() {
+  followWorkspaceSession = true;
+  useWorkspaceSession();
+  await contextStateSet();
+  await refreshStatus();
+}
+
 async function contextStateSet() {
   await vscode.commands.executeCommand('setContext', 'rtk.sessionId', sessionId);
+}
+
+function bundledCliPath() {
+  return path.join(__dirname, 'bin', 'rtk-node.js');
+}
+
+function installShellHook() {
+  return new Promise((resolve, reject) => {
+    const bundledCli = bundledCliPath();
+    if (!fs.existsSync(bundledCli)) {
+      reject(new Error('Bundled RTK CLI was not found in the extension.'));
+      return;
+    }
+
+    const rtkCommand = bundledCliCommand();
+    execFile(nodeCommand(), [bundledCli, 'init', '-g', '--hook-only', '--command', rtkCommand], {
+      cwd: workspaceCwd(),
+      env: rtkEnv(),
+      windowsHide: true,
+      timeout: 5000
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr?.trim() || error.message));
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+}
+
+async function enableAutoWrap() {
+  try {
+    const output = await installShellHook();
+    await refreshStatus();
+    vscode.window.showInformationMessage(`RTK automatic terminal wrapping enabled. Restart terminals to use it. ${output}`);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Unable to enable RTK automatic terminal wrapping: ${error.message}`);
+  }
+}
+
+async function maybePromptAutoWrap(context) {
+  if (!config().get('autoWrapTerminals', true)) return;
+  if (context.globalState.get('autoWrapPrompted')) return;
+  await context.globalState.update('autoWrapPrompted', true);
+
+  const choice = await vscode.window.showInformationMessage(
+    'Enable RTK automatic wrapping for noisy terminal commands like git, rg, npm, pytest, ls, find, and cat?',
+    'Enable',
+    'Not now'
+  );
+  if (choice === 'Enable') await enableAutoWrap();
 }
 
 async function startAgentTerminal() {
@@ -454,12 +523,7 @@ async function openDashboard() {
 }
 
 async function activate(context) {
-  const savedSessionId = context.globalState.get('sessionId');
-  const savedSessionLabel = context.globalState.get('sessionLabel');
-  sessionId = !savedSessionId || savedSessionId.startsWith('vscode-') ? workspaceSessionId() : savedSessionId;
-  sessionLabel = sessionId === workspaceSessionId()
-    ? workspaceSessionLabel()
-    : savedSessionLabel || `VS Code ${new Date().toLocaleTimeString()}`;
+  useWorkspaceSession();
 
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.text = 'RTK starting';
@@ -469,7 +533,10 @@ async function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('rtk.refresh', refreshStatus));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.openDashboard', openDashboard));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.newSession', newSession));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.useWorkspaceSession', resetToWorkspaceSession));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.enableAutoWrap', enableAutoWrap));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.startAgentTerminal', startAgentTerminal));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(resetToWorkspaceSession));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
     if (event.affectsConfiguration('rtk.refreshIntervalMs')) startTimer(context);
     if (event.affectsConfiguration('rtk')) refreshStatus();
@@ -477,14 +544,15 @@ async function activate(context) {
 
   context.subscriptions.push({
     dispose: () => {
-      context.globalState.update('sessionId', sessionId);
-      context.globalState.update('sessionLabel', sessionLabel);
+      context.globalState.update('lastWorkspaceSessionId', workspaceSessionId());
+      context.globalState.update('lastWorkspaceSessionLabel', workspaceSessionLabel());
     }
   });
 
   await contextStateSet();
   startTimer(context);
   await refreshStatus();
+  await maybePromptAutoWrap(context);
 }
 
 function deactivate() {

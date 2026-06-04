@@ -31,20 +31,20 @@ When running shell commands, prefer prefixing noisy commands with \`rtk-node\` s
 Reference: @RTK.md
 `;
 
-function hookBlock(shell) {
+function hookBlock(shell, rtkCommand = 'rtk-node') {
   if (shell === 'fish') {
     return [
       START,
       'set -gx RTK_NODE_HOOK 1',
       ...POSIX_COMMANDS.map((cmd) => [
         `function ${cmd}`,
-        '  if test -n "$RTK_NODE_ACTIVE"',
-        `    command ${cmd} $argv`,
-        '  else',
-        `    rtk-node ${cmd} $argv`,
-        '  end',
-        'end'
-      ].join('\n')),
+      '  if test -n "$RTK_NODE_ACTIVE"',
+      `    command ${cmd} $argv`,
+      '  else',
+      `    ${rtkCommand} ${cmd} $argv`,
+      '  end',
+      'end'
+    ].join('\n')),
       END
     ].join('\n');
   }
@@ -62,13 +62,13 @@ function hookBlock(shell) {
       '$env:RTK_NODE_HOOK = "1"',
       ...POWERSHELL_COMMANDS.map((cmd) => [
         `function global:${cmd} {`,
-        '  if ($env:RTK_NODE_ACTIVE) {',
-        `    & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
-        '  } else {',
-        `    & rtk-node ${cmd} @args`,
-        '  }',
-        '}'
-      ].join('\n')),
+      '  if ($env:RTK_NODE_ACTIVE) {',
+      `    & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
+      '  } else {',
+      `    & ${rtkCommand} ${cmd} @args`,
+      '  }',
+      '}'
+    ].join('\n')),
       END
     ].join('\n');
   }
@@ -81,7 +81,7 @@ function hookBlock(shell) {
       '  if [ -n "$RTK_NODE_ACTIVE" ]; then',
       `    command ${cmd} "$@"`,
       '  else',
-      `    rtk-node ${cmd} "$@"`,
+      `    ${rtkCommand} ${cmd} "$@"`,
       '  fi',
       '}'
     ].join('\n')),
@@ -113,11 +113,11 @@ function removeExisting(content) {
   return content.replace(re, '\n').trimEnd();
 }
 
-export function installHook({ shell = detectShell(), global = false, hookOnly = false } = {}) {
+export function installHook({ shell = detectShell(), global = false, hookOnly = false, rtkCommand = 'rtk-node' } = {}) {
   const target = profilePath(shell);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const current = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
-  const next = `${removeExisting(current)}\n\n${hookBlock(shell)}\n`;
+  const next = `${removeExisting(current)}\n\n${hookBlock(shell, rtkCommand)}\n`;
   fs.writeFileSync(target, next);
   return { shell, profile: target, global, hookOnly };
 }

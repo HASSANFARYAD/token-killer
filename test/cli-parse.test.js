@@ -21,6 +21,14 @@ test('init flags are parsed after init', () => {
   assert.deepEqual(parsed.positional, ['init']);
 });
 
+test('init accepts a concrete rtk command for shell hooks', () => {
+  const parsed = parseForTest(['init', '-g', '--hook-only', '--command', "'/usr/bin/node' '/ext/bin/rtk-node.js'"]);
+  assert.equal(parsed.flags.global, true);
+  assert.equal(parsed.flags.hookOnly, true);
+  assert.equal(parsed.flags.rtkCommand, "'/usr/bin/node' '/ext/bin/rtk-node.js'");
+  assert.deepEqual(parsed.positional, ['init']);
+});
+
 test('codex init flags are parsed after init', () => {
   const parsed = parseForTest(['init', '-g', '--codex', '--uninstall']);
   assert.equal(parsed.flags.global, true);

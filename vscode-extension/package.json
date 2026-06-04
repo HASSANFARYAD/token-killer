@@ -21,6 +21,8 @@
     "onStartupFinished",
     "onCommand:rtk.refresh",
     "onCommand:rtk.startAgentTerminal",
+    "onCommand:rtk.enableAutoWrap",
+    "onCommand:rtk.useWorkspaceSession",
     "onCommand:rtk.newSession",
     "onCommand:rtk.openDashboard"
   ],
@@ -38,6 +40,14 @@
       {
         "command": "rtk.newSession",
         "title": "RTK: Start New Session"
+      },
+      {
+        "command": "rtk.useWorkspaceSession",
+        "title": "RTK: Use Current Workspace Session"
+      },
+      {
+        "command": "rtk.enableAutoWrap",
+        "title": "RTK: Enable Automatic Terminal Wrapping"
       },
       {
         "command": "rtk.startAgentTerminal",
@@ -67,6 +77,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show lifetime total savings when the active session has no recorded runs."
+        },
+        "rtk.autoWrapTerminals": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt once to enable shell hooks that automatically wrap noisy terminal commands through bundled RTK."
+        },
+        "rtk.followWorkspacePath": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the displayed RTK session aligned with the current workspace folder path."
         }
       }
     }
