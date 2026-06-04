@@ -5,10 +5,20 @@ import { analyticsPath, dataDir } from './config.js';
 
 const ANALYTICS_VERSION = 3;
 const MAX_RECENT_RUNS = 50;
+const DEFAULT_CHARS_PER_TOKEN = 4;
 
-function estimateTokens(text) {
+function charsPerToken() {
+  const value = Number(process.env.RTK_CHARS_PER_TOKEN);
+  if (Number.isFinite(value) && value > 0) return value;
+  return DEFAULT_CHARS_PER_TOKEN;
+}
+
+export function estimateTokens(text, options = {}) {
   if (!text) return 0;
-  return Math.max(1, Math.ceil(text.length / 4));
+  const ratio = typeof options.charsPerToken === 'number' && options.charsPerToken > 0
+    ? options.charsPerToken
+    : charsPerToken();
+  return Math.max(1, Math.ceil(text.length / ratio));
 }
 
 function emptyDb() {

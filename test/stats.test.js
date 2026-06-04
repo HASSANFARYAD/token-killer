@@ -4,7 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { analyticsPath } from '../src/config.js';
-import { analyticsSnapshot, formatSessionGain, readAnalytics, recordRun } from '../src/stats.js';
+import { analyticsSnapshot, estimateTokens, formatSessionGain, readAnalytics, recordRun } from '../src/stats.js';
+
+test('estimateTokens uses configurable characters per token', () => {
+  assert.equal(estimateTokens('a'.repeat(400)), 100);
+  assert.equal(estimateTokens('a'.repeat(400), { charsPerToken: 2 }), 200);
+});
 
 test('records token savings for the current session', () => {
   const previousDataHome = process.env.XDG_DATA_HOME;

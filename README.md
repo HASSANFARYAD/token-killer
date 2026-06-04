@@ -197,3 +197,11 @@ Filters return:
 ```
 
 Keep filters conservative: preserve errors, failing assertions, file names, line numbers, exit behavior, and enough context for an AI agent to act.
+
+`rtk-node` only appends the metadata footer when the filtered output plus metadata is still smaller than the raw command output. For small commands, it may print only the filtered body or the original output to avoid turning a tiny result into token growth.
+
+Token counts default to an approximate one token per four characters. Set `RTK_CHARS_PER_TOKEN` when you want local analytics tuned for a specific agent or model family:
+
+```sh
+RTK_CHARS_PER_TOKEN=3.8 rtk-node session
+```

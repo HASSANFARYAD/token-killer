@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseForTest } from '../src/cli.js';
+import { chooseFinalOutputForTest, parseForTest } from '../src/cli.js';
 
 test('proxy flags are parsed before command only', () => {
   const parsed = parseForTest(['--no-colors', 'git', 'diff', '--no-color']);
@@ -45,4 +45,26 @@ test('agent no summary flag is parsed after agent', () => {
   const parsed = parseForTest(['agent', '--no-summary', 'codex', '--version']);
   assert.equal(parsed.flags.noSummary, true);
   assert.deepEqual(parsed.positional, ['agent', 'codex', '--version']);
+});
+
+test('final output omits metadata when metadata would expand filtered output', () => {
+  const output = chooseFinalOutputForTest({
+    rawOutput: 'one\ntwo\nthree\n',
+    body: 'summary',
+    meta: '\n--- rtk-node metadata ---\nlarge footer',
+    explain: ''
+  });
+
+  assert.equal(output, 'summary\n');
+});
+
+test('final output keeps metadata when it still saves space', () => {
+  const output = chooseFinalOutputForTest({
+    rawOutput: 'a'.repeat(200),
+    body: 'summary',
+    meta: '\n--- rtk-node metadata ---\nok',
+    explain: ''
+  });
+
+  assert.match(output, /rtk-node metadata/);
 });

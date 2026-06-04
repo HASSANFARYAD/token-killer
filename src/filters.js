@@ -183,6 +183,25 @@ function gitDiff(output, config) {
   };
 }
 
+function gitDiffStat(output, config) {
+  const result = genericTruncate(output, {
+    ...config,
+    maxLines: Math.min(config.maxLines, config.ultraCompact ? 40 : 120),
+    maxChars: Math.min(config.maxChars, config.ultraCompact ? 4000 : 12000)
+  });
+  const lines = splitLines(output).filter(Boolean);
+  return {
+    ...result,
+    explain: {
+      filter: 'git diff stat',
+      originalLines: lines.length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['file stat rows', 'insert/delete summary'],
+      omitted: ['stat rows beyond configured limits']
+    }
+  };
+}
+
 function compactLs(output, config) {
   const lines = splitLines(output);
   const dirs = [];
@@ -406,6 +425,7 @@ function testOutput(output, config) {
 export function classify(command, args = []) {
   const base = command?.split(/[\\/]/).pop()?.toLowerCase();
   if (base === 'git' && args[0] === 'status') return gitStatus;
+  if (base === 'git' && args[0] === 'diff' && args.includes('--stat')) return gitDiffStat;
   if (base === 'git' && args[0] === 'diff') return gitDiff;
   if (base === 'git' && args[0] === 'log') return gitLog;
   if (base === 'git' && ['add', 'commit', 'push', 'pull', 'fetch'].includes(args[0])) {

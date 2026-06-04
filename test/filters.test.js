@@ -43,6 +43,19 @@ test('git diff keeps hunks and omits context', () => {
   assert.match(result.text, /\+new/);
 });
 
+test('git diff --stat preserves stat rows', () => {
+  const output = [
+    ' src/cli.js     | 12 +++++++++---',
+    ' src/filters.js |  8 +++++++-',
+    ' 2 files changed, 16 insertions(+), 4 deletions(-)'
+  ].join('\n');
+  const result = filterOutput('git', ['diff', '--stat'], output, config);
+
+  assert.match(result.text, /src\/cli\.js/);
+  assert.match(result.text, /2 files changed/);
+  assert.equal(result.explain.filter, 'git diff stat');
+});
+
 test('rg groups matches by file and caps per file', () => {
   const output = [
     'src/a.js:1:TODO one',

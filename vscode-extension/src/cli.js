@@ -125,6 +125,21 @@ function explainMetadata(explain) {
   return lines.join('\n');
 }
 
+function chooseFinalOutput({ rawOutput, body, meta, explain }) {
+  const withMetadata = `${body}${meta}${explain}\n`;
+  const bodyOnly = body ? `${body}\n` : '';
+  const rawBytes = byteLength(rawOutput);
+  const bodyBytes = byteLength(bodyOnly);
+  const withMetadataBytes = byteLength(withMetadata);
+
+  if (rawBytes === 0) return bodyOnly;
+  if (withMetadataBytes <= rawBytes) return withMetadata;
+  if (bodyBytes < rawBytes) return bodyOnly;
+  return rawOutput;
+}
+
+export const chooseFinalOutputForTest = chooseFinalOutput;
+
 export async function main(argv) {
   const { flags, positional } = parse(argv);
   const subcommand = positional[0];
@@ -254,7 +269,7 @@ export async function main(argv) {
     truncated: filtered.truncated
   });
   const explain = flags.explain ? explainMetadata(filtered.explain) : '';
-  const finalOutput = `${body}${meta}${explain}\n`;
+  const finalOutput = chooseFinalOutput({ rawOutput, body, meta, explain });
   process.stdout.write(finalOutput);
   recordRun(commandName, rawOutput, finalOutput, {
     exitCode: result.status,
