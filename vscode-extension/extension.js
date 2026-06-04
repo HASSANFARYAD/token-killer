@@ -89,9 +89,32 @@ function commandCandidates() {
 function bundledCliCommand() {
   const bundledCli = path.join(__dirname, 'bin', 'rtk-node.js');
   if (fs.existsSync(bundledCli)) {
-    return `${JSON.stringify(nodeCommand())} ${JSON.stringify(bundledCli)}`;
+    return commandLine([nodeCommand(), bundledCli]);
   }
-  return process.platform === 'win32' ? 'rtk-node.cmd' : 'rtk-node';
+  return commandLine([process.platform === 'win32' ? 'rtk-node.cmd' : 'rtk-node']);
+}
+
+function needsShellQuoting(value) {
+  return /[\s"'`&|<>()@^]/.test(value);
+}
+
+function powershellQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function posixQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function commandLine(parts) {
+  if (process.platform === 'win32') {
+    const [command, ...args] = parts;
+    const formattedCommand = needsShellQuoting(command) ? `& ${powershellQuote(command)}` : command;
+    const formattedArgs = args.map((arg) => needsShellQuoting(arg) ? powershellQuote(arg) : arg);
+    return [formattedCommand, ...formattedArgs].join(' ');
+  }
+
+  return parts.map((part) => needsShellQuoting(part) ? posixQuote(part) : part).join(' ');
 }
 
 function execRtkCandidate(candidate) {
