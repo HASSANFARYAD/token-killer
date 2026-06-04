@@ -8,6 +8,12 @@ test('proxy flags are parsed before command only', () => {
   assert.deepEqual(parsed.positional, ['git', 'diff', '--no-color']);
 });
 
+test('explain is parsed as a proxy flag before command only', () => {
+  const parsed = parseForTest(['--explain', 'rg', '--explain', 'TODO']);
+  assert.equal(parsed.flags.explain, true);
+  assert.deepEqual(parsed.positional, ['rg', '--explain', 'TODO']);
+});
+
 test('init flags are parsed after init', () => {
   const parsed = parseForTest(['init', '-g', '--hook-only']);
   assert.equal(parsed.flags.global, true);

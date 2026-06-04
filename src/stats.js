@@ -3,6 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { analyticsPath, dataDir } from './config.js';
 
+const ANALYTICS_VERSION = 3;
+const MAX_RECENT_RUNS = 50;
+
 function estimateTokens(text) {
   if (!text) return 0;
   return Math.max(1, Math.ceil(text.length / 4));
@@ -10,12 +13,13 @@ function estimateTokens(text) {
 
 function emptyDb() {
   return {
-    version: 2,
+    version: ANALYTICS_VERSION,
     totalRuns: 0,
     totalOriginalTokens: 0,
     totalCompressedTokens: 0,
     commands: {},
-    sessions: {}
+    sessions: {},
+    recentRuns: []
   };
 }
 
@@ -33,13 +37,45 @@ function sessionLabel(id) {
   return process.cwd();
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeRun(run) {
+  if (!isRecord(run)) return null;
+  return {
+    command: typeof run.command === 'string' ? run.command : 'unknown',
+    sessionId: typeof run.sessionId === 'string' ? run.sessionId : null,
+    sessionLabel: typeof run.sessionLabel === 'string' ? run.sessionLabel : null,
+    timestamp: typeof run.timestamp === 'string' ? run.timestamp : null,
+    exitCode: typeof run.exitCode === 'number' ? run.exitCode : null,
+    durationMs: typeof run.durationMs === 'number' ? run.durationMs : null,
+    originalTokens: typeof run.originalTokens === 'number' ? run.originalTokens : 0,
+    compressedTokens: typeof run.compressedTokens === 'number' ? run.compressedTokens : 0,
+    savedTokens: typeof run.savedTokens === 'number' ? run.savedTokens : 0,
+    truncated: Boolean(run.truncated)
+  };
+}
+
+function sanitizeRecentRuns(runs) {
+  if (!Array.isArray(runs)) return [];
+  return runs.map(sanitizeRun).filter(Boolean).slice(0, MAX_RECENT_RUNS);
+}
+
 function ensureShape(db) {
-  db.version ||= 2;
+  if (!isRecord(db)) return emptyDb();
+  db.version = ANALYTICS_VERSION;
   db.totalRuns ||= 0;
   db.totalOriginalTokens ||= 0;
   db.totalCompressedTokens ||= 0;
-  db.commands ||= {};
-  db.sessions ||= {};
+  db.commands = isRecord(db.commands) ? db.commands : {};
+  db.sessions = isRecord(db.sessions) ? db.sessions : {};
+  db.recentRuns = sanitizeRecentRuns(db.recentRuns);
+  for (const session of Object.values(db.sessions)) {
+    if (!isRecord(session)) continue;
+    session.commands = isRecord(session.commands) ? session.commands : {};
+    session.recentRuns = sanitizeRecentRuns(session.recentRuns);
+  }
   return db;
 }
 
@@ -51,47 +87,73 @@ export function readAnalytics() {
   }
 }
 
-export function recordRun(command, originalText, compressedText) {
-  fs.mkdirSync(dataDir(), { recursive: true });
-  const db = readAnalytics();
-  const originalTokens = estimateTokens(originalText);
-  const compressedTokens = estimateTokens(compressedText);
-  const savedTokens = Math.max(0, originalTokens - compressedTokens);
-  const key = command || 'unknown';
+function boundedRecent(runs, run) {
+  return [run, ...(Array.isArray(runs) ? runs : [])].slice(0, MAX_RECENT_RUNS);
+}
 
-  db.totalRuns += 1;
-  db.totalOriginalTokens += originalTokens;
-  db.totalCompressedTokens += compressedTokens;
-  db.commands[key] ||= { runs: 0, originalTokens: 0, compressedTokens: 0, savedTokens: 0 };
-  db.commands[key].runs += 1;
-  db.commands[key].originalTokens += originalTokens;
-  db.commands[key].compressedTokens += compressedTokens;
-  db.commands[key].savedTokens += savedTokens;
+export function recordRun(command, originalText, compressedText, options = {}) {
+  try {
+    fs.mkdirSync(dataDir(), { recursive: true });
+    const db = readAnalytics();
+    const originalTokens = estimateTokens(originalText);
+    const compressedTokens = estimateTokens(compressedText);
+    const savedTokens = Math.max(0, originalTokens - compressedTokens);
+    const key = command || 'unknown';
+    const now = new Date().toISOString();
 
-  const id = sessionId();
-  db.sessions[id] ||= {
-    label: sessionLabel(id),
-    runs: 0,
-    originalTokens: 0,
-    compressedTokens: 0,
-    savedTokens: 0,
-    commands: {},
-    startedAt: new Date().toISOString(),
-    updatedAt: null
-  };
-  const session = db.sessions[id];
-  session.runs += 1;
-  session.originalTokens += originalTokens;
-  session.compressedTokens += compressedTokens;
-  session.savedTokens += savedTokens;
-  session.updatedAt = new Date().toISOString();
-  session.commands[key] ||= { runs: 0, originalTokens: 0, compressedTokens: 0, savedTokens: 0 };
-  session.commands[key].runs += 1;
-  session.commands[key].originalTokens += originalTokens;
-  session.commands[key].compressedTokens += compressedTokens;
-  session.commands[key].savedTokens += savedTokens;
+    db.totalRuns += 1;
+    db.totalOriginalTokens += originalTokens;
+    db.totalCompressedTokens += compressedTokens;
+    db.commands[key] ||= { runs: 0, originalTokens: 0, compressedTokens: 0, savedTokens: 0 };
+    db.commands[key].runs += 1;
+    db.commands[key].originalTokens += originalTokens;
+    db.commands[key].compressedTokens += compressedTokens;
+    db.commands[key].savedTokens += savedTokens;
 
-  fs.writeFileSync(analyticsPath(), JSON.stringify(db, null, 2));
+    const id = sessionId();
+    db.sessions[id] ||= {
+      label: sessionLabel(id),
+      runs: 0,
+      originalTokens: 0,
+      compressedTokens: 0,
+      savedTokens: 0,
+      commands: {},
+      recentRuns: [],
+      startedAt: now,
+      updatedAt: null
+    };
+    const session = db.sessions[id];
+    session.runs += 1;
+    session.originalTokens += originalTokens;
+    session.compressedTokens += compressedTokens;
+    session.savedTokens += savedTokens;
+    session.updatedAt = new Date().toISOString();
+    session.commands[key] ||= { runs: 0, originalTokens: 0, compressedTokens: 0, savedTokens: 0 };
+    session.commands[key].runs += 1;
+    session.commands[key].originalTokens += originalTokens;
+    session.commands[key].compressedTokens += compressedTokens;
+    session.commands[key].savedTokens += savedTokens;
+
+    const run = {
+      command: key,
+      sessionId: id,
+      sessionLabel: session.label,
+      timestamp: now,
+      exitCode: typeof options.exitCode === 'number' ? options.exitCode : null,
+      durationMs: typeof options.durationMs === 'number' ? Number(options.durationMs.toFixed(1)) : null,
+      originalTokens,
+      compressedTokens,
+      savedTokens,
+      truncated: Boolean(options.truncated)
+    };
+    db.recentRuns = boundedRecent(db.recentRuns, run);
+    session.recentRuns = boundedRecent(session.recentRuns, run);
+
+    fs.writeFileSync(analyticsPath(), JSON.stringify(db, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function ratio(saved, original) {
@@ -136,7 +198,8 @@ export function analyticsSnapshot(id = sessionId()) {
       savedPercent: ratio(session.savedTokens, session.originalTokens),
       startedAt: session.startedAt || null,
       updatedAt: session.updatedAt || null,
-      commands: session.commands || {}
+      commands: session.commands || {},
+      recentRuns: session.recentRuns || []
     },
     total: {
       runs: db.totalRuns,
@@ -144,7 +207,8 @@ export function analyticsSnapshot(id = sessionId()) {
       originalTokens: db.totalOriginalTokens,
       compressedTokens: db.totalCompressedTokens,
       savedPercent: ratio(saved, db.totalOriginalTokens),
-      commands: db.commands
+      commands: db.commands,
+      recentRuns: db.recentRuns || []
     }
   };
 }

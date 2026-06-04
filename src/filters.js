@@ -71,7 +71,17 @@ function gitStatus(output, config) {
     if (values.length) out.push(`${label} sample: ${values.join(', ')}`);
   }
 
-  return { text: out.join('\n'), truncated: lines.length > out.length };
+  return {
+    text: out.join('\n'),
+    truncated: lines.length > out.length,
+    explain: {
+      filter: 'git status',
+      originalLines: lines.length,
+      outputLines: out.length,
+      kept: ['branch name', 'staged/unstaged/untracked counts', 'limited file samples'],
+      omitted: ['full git status prose', 'extra file samples beyond the cap']
+    }
+  };
 }
 
 function gitLog(output, config) {
@@ -86,7 +96,17 @@ function gitLog(output, config) {
   }
   const selected = commits.length ? commits : lines;
   const result = genericTruncate(selected.join('\n'), { ...config, maxLines: Math.min(config.maxLines, 40) });
-  return { ...result, truncated: result.truncated || selected.length < lines.length };
+  return {
+    ...result,
+    truncated: result.truncated || selected.length < lines.length,
+    explain: {
+      filter: 'git log',
+      originalLines: lines.length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: commits.length ? ['commit hashes', 'commit subject fragments'] : ['first compacted log lines'],
+      omitted: commits.length ? ['author/date metadata', 'long commit body text'] : ['lines beyond configured limits']
+    }
+  };
 }
 
 function gitOk(output, config, action) {
@@ -96,7 +116,17 @@ function gitOk(output, config, action) {
   const branch = plain.join('\n').match(/(?:to|branch)\s+['"]?([^'"\s]+)['"]?/i)?.[1];
   const stats = plain.find((line) => /\d+\s+files?\s+changed/.test(line));
   const msg = ['ok', action, commit?.slice(0, 8), branch, stats].filter(Boolean).join(' ');
-  return { text: msg, truncated: lines.length > 1 };
+  return {
+    text: msg,
+    truncated: lines.length > 1,
+    explain: {
+      filter: `git ${action}`,
+      originalLines: lines.length,
+      outputLines: msg ? 1 : 0,
+      kept: ['operation result', 'commit/branch/stat summary when present'],
+      omitted: ['verbose command output']
+    }
+  };
 }
 
 function gitDiff(output, config) {
@@ -139,7 +169,18 @@ function gitDiff(output, config) {
   if (omitted) keep.push(`... (${omitted} unchanged context lines omitted)`);
   const deduped = dedupeConsecutive(keep);
   const result = genericTruncate(deduped.join('\n'), config);
-  return { ...result, truncated: result.truncated || deduped.length < lines.length };
+  return {
+    ...result,
+    truncated: result.truncated || deduped.length < lines.length,
+    explain: {
+      filter: 'git diff',
+      originalLines: lines.filter(Boolean).length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['file headers', 'hunk headers', 'added/removed lines', `${maxContext} context lines after important lines`],
+      omitted: ['unchanged context outside the configured context budget'],
+      omittedLines: Math.max(0, lines.filter(Boolean).length - deduped.filter(Boolean).length)
+    }
+  };
 }
 
 function compactLs(output, config) {
@@ -189,14 +230,36 @@ function compactLs(output, config) {
     }
   }
 
-  if (!dirs.length && !files.length) return genericTruncate(output, config);
+  if (!dirs.length && !files.length) {
+    const result = genericTruncate(output, config);
+    return {
+      ...result,
+      explain: {
+        filter: 'generic truncate',
+        originalLines: lines.length,
+        outputLines: splitLines(result.text).filter(Boolean).length,
+        kept: ['first lines within configured limits'],
+        omitted: ['lines beyond configured limits']
+      }
+    };
+  }
   const extSummary = [...exts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([ext, count]) => `${count} ${ext}`)
     .join(', ');
   const out = [...dirs, ...files, '', `Summary: ${files.length} files, ${dirs.length} dirs${extSummary ? ` (${extSummary})` : ''}`];
-  return { text: out.join('\n'), truncated: out.length < lines.length };
+  return {
+    text: out.join('\n'),
+    truncated: out.length < lines.length,
+    explain: {
+      filter: 'directory listing',
+      originalLines: lines.filter(Boolean).length,
+      outputLines: out.filter(Boolean).length,
+      kept: ['directory names', 'file names and sizes', 'extension summary'],
+      omitted: ['permissions', 'owners', 'timestamps', 'noise directories']
+    }
+  };
 }
 
 function findOutput(output, config) {
@@ -212,7 +275,17 @@ function findOutput(output, config) {
   const sample = lines.slice(0, config.ultraCompact ? 20 : 60);
   const candidate = [...grouped, '', ...sample].join('\n');
   const result = genericTruncate(candidate.length < output.length ? candidate : sample.join('\n'), config);
-  return { ...result, truncated: result.truncated || sample.length < lines.length };
+  return {
+    ...result,
+    truncated: result.truncated || sample.length < lines.length,
+    explain: {
+      filter: 'find',
+      originalLines: lines.length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['directory grouping summary', 'bounded file sample'],
+      omitted: ['file paths beyond the configured sample and truncation limits']
+    }
+  };
 }
 
 function readOutput(output, config) {
@@ -232,7 +305,18 @@ function readOutput(output, config) {
     if (/^\/\*|\*\/$/.test(trimmed)) continue;
     filtered.push(line);
   }
-  return genericTruncate(filtered.join('\n'), config);
+  const result = genericTruncate(filtered.join('\n'), config);
+  return {
+    ...result,
+    explain: {
+      filter: 'read',
+      originalLines: lines.length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['non-comment content', 'single blank-line separators'],
+      omitted: ['simple line comments', 'repeated blank lines', 'block comment delimiters'],
+      omittedLines: Math.max(0, lines.length - filtered.length)
+    }
+  };
 }
 
 function searchMatches(output, config) {
@@ -262,7 +346,18 @@ function searchMatches(output, config) {
   if (passthrough.length) out.push(...passthrough.slice(0, cap));
   if (!out.length && lines.length) out.push(...lines.slice(0, cap));
 
-  return { text: out.join('\n'), truncated: out.length < lines.length };
+  return {
+    text: out.join('\n'),
+    truncated: out.length < lines.length,
+    explain: {
+      filter: 'search matches',
+      originalLines: lines.length,
+      outputLines: out.length,
+      kept: ['matches grouped by file', `up to ${cap} matches per file`, 'limited passthrough lines'],
+      omitted: ['extra matches beyond per-file cap'],
+      omittedLines: Math.max(0, lines.length - out.length)
+    }
+  };
 }
 
 function testOutput(output, config) {
@@ -294,7 +389,18 @@ function testOutput(output, config) {
   }
 
   if (skippedPassing) out.push(`... (${skippedPassing} non-failing lines omitted)`);
-  return genericTruncate(out.join('\n'), config);
+  const result = genericTruncate(out.join('\n'), config);
+  return {
+    ...result,
+    explain: {
+      filter: 'test output',
+      originalLines: lines.filter(Boolean).length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['failures', 'errors', 'tracebacks/assertions', 'test summary lines'],
+      omitted: ['passing test noise', 'non-failing output'],
+      omittedLines: skippedPassing
+    }
+  };
 }
 
 export function classify(command, args = []) {
@@ -316,6 +422,18 @@ export function classify(command, args = []) {
 
 export function filterOutput(command, args, output, config) {
   const filter = classify(command, args);
-  if (!filter) return genericTruncate(output, config);
+  if (!filter) {
+    const result = genericTruncate(output, config);
+    return {
+      ...result,
+      explain: {
+        filter: 'generic truncate',
+        originalLines: splitLines(output).filter(Boolean).length,
+        outputLines: splitLines(result.text).filter(Boolean).length,
+        kept: ['output within configured line and character limits'],
+        omitted: ['duplicate or excess output beyond configured limits']
+      }
+    };
+  }
   return filter(output, config);
 }

@@ -21,7 +21,8 @@
     "onStartupFinished",
     "onCommand:rtk.refresh",
     "onCommand:rtk.startAgentTerminal",
-    "onCommand:rtk.newSession"
+    "onCommand:rtk.newSession",
+    "onCommand:rtk.openDashboard"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -29,6 +30,10 @@
       {
         "command": "rtk.refresh",
         "title": "RTK: Refresh Token Savings"
+      },
+      {
+        "command": "rtk.openDashboard",
+        "title": "RTK: Open Dashboard"
       },
       {
         "command": "rtk.newSession",

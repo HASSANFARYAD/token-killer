@@ -55,6 +55,9 @@ test('rg groups matches by file and caps per file', () => {
   assert.match(result.text, /1: TODO one/);
   assert.match(result.text, /\.\.\. \(1 more matches\)/);
   assert.match(result.text, /src\/b\.js \(1 matches\)/);
+  assert.equal(result.explain.filter, 'search matches');
+  assert.match(result.explain.kept.join(' '), /up to 2 matches per file/);
+  assert.equal(Object.hasOwn(result.explain, 'rawOutput'), false);
 });
 
 test('pytest keeps failures and summary', () => {
@@ -71,6 +74,8 @@ test('pytest keeps failures and summary', () => {
   assert.match(result.text, /AssertionError/);
   assert.match(result.text, /1 failed, 1 passed/);
   assert.doesNotMatch(result.text, /test_ok\.py \./);
+  assert.equal(result.explain.filter, 'test output');
+  assert.match(result.explain.omitted.join(' '), /passing test noise/);
 });
 
 test('generic fallback truncates huge output', () => {
@@ -78,6 +83,7 @@ test('generic fallback truncates huge output', () => {
   const result = filterOutput('unknown', [], output, config);
   assert.equal(result.truncated, true);
   assert.match(result.text, /lines truncated/);
+  assert.equal(result.explain.filter, 'generic truncate');
 });
 
 test('ls compacts long listing into names and summary', () => {

@@ -12,6 +12,7 @@ function parse(argv) {
   const flags = {
     colors: true,
     verbose: false,
+    explain: false,
     ultraCompact: false,
     hookOnly: false,
     global: false,
@@ -27,6 +28,7 @@ function parse(argv) {
     const arg = argv[i];
     if (arg === '--no-colors') flags.colors = false;
     else if (arg === '-v' || arg === '--verbose') flags.verbose = true;
+    else if (arg === '--explain') flags.explain = true;
     else if (arg === '-u' || arg === '--ultra-compact') flags.ultraCompact = true;
     else break;
   }
@@ -83,6 +85,7 @@ Usage:
 Flags:
   --no-colors       Strip ANSI color codes from output
   -v, --verbose     Print unfiltered command output
+  --explain         Print a short explanation of the applied compression
   -u, --ultra-compact
                     Use more aggressive truncation and shorter summaries
 `;
@@ -105,6 +108,21 @@ function metadata({ command, args, result, original, compressed, truncated }) {
     `saved: ${saved}%`,
     `truncated: ${truncated ? 'yes' : 'no'}`
   ].join('\n');
+}
+
+function explainMetadata(explain) {
+  if (!explain) return '';
+  const lines = [
+    '',
+    '--- rtk-node explain ---',
+    `filter: ${explain.filter || 'unknown'}`
+  ];
+  if (typeof explain.originalLines === 'number') lines.push(`original_lines: ${explain.originalLines}`);
+  if (typeof explain.outputLines === 'number') lines.push(`output_lines: ${explain.outputLines}`);
+  if (typeof explain.omittedLines === 'number') lines.push(`omitted_lines: ${explain.omittedLines}`);
+  if (Array.isArray(explain.kept) && explain.kept.length) lines.push(`kept: ${explain.kept.join('; ')}`);
+  if (Array.isArray(explain.omitted) && explain.omitted.length) lines.push(`omitted: ${explain.omitted.join('; ')}`);
+  return lines.join('\n');
 }
 
 export async function main(argv) {
@@ -235,8 +253,13 @@ export async function main(argv) {
     compressed: body,
     truncated: filtered.truncated
   });
-  const finalOutput = `${body}${meta}\n`;
+  const explain = flags.explain ? explainMetadata(filtered.explain) : '';
+  const finalOutput = `${body}${meta}${explain}\n`;
   process.stdout.write(finalOutput);
-  recordRun(commandName, rawOutput, finalOutput);
+  recordRun(commandName, rawOutput, finalOutput, {
+    exitCode: result.status,
+    durationMs: result.durationMs,
+    truncated: filtered.truncated
+  });
   process.exit(result.status);
 }
