@@ -3,14 +3,24 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const {
+  getAdminDashboardData,
+  importExistingHistory,
+  loginWithMicrosoft,
+  logout,
+  syncSnapshot
+} = require('./sync');
 
 let statusItem;
 let refreshTimer;
 let sessionId;
 let sessionLabel;
 let dashboardPanel;
+let adminPanel;
 let lastSnapshot;
 let lastError;
+let lastSyncAt = 0;
+let syncInFlight = false;
 let followWorkspaceSession = true;
 
 function workspaceCwd() {
@@ -167,6 +177,7 @@ async function refreshStatus() {
     const snapshot = await runRtkStatus();
     lastSnapshot = snapshot;
     lastError = null;
+    maybeSyncSnapshot(snapshot);
     const showTotal = config().get('showTotalWhenNoSession', true);
     const source = snapshot.session.runs || !showTotal ? snapshot.session : snapshot.total;
     const label = snapshot.session.runs || !showTotal ? 'session' : 'total';
@@ -190,6 +201,22 @@ async function refreshStatus() {
     statusItem.command = 'rtk.openDashboard';
     statusItem.show();
     updateDashboard();
+  }
+}
+
+async function maybeSyncSnapshot(snapshot, force = false) {
+  if (syncInFlight) return;
+  const interval = config().get('syncIntervalMs', 30000);
+  const now = Date.now();
+  if (!force && now - lastSyncAt < interval) return;
+  syncInFlight = true;
+  try {
+    await syncSnapshot(extensionContext, snapshot, workspaceCwd());
+    lastSyncAt = now;
+  } catch (error) {
+    lastError = error;
+  } finally {
+    syncInFlight = false;
   }
 }
 
@@ -498,6 +525,91 @@ function dashboardHtml(snapshot, error) {
 </html>`;
 }
 
+function adminDashboardHtml(data, error) {
+  const summary = data?.summary || {};
+  const users = data?.users || [];
+  const percent = summary.original_tokens
+    ? ((summary.saved_tokens || 0) / summary.original_tokens) * 100
+    : 0;
+  const rows = users.length
+    ? users.map((user) => `
+      <tr>
+        <td>${escapeHtml(user.email)}</td>
+        <td>${escapeHtml(user.runs || 0)}</td>
+        <td>${escapeHtml(formatTokens(user.saved_tokens || 0))}</td>
+        <td>${escapeHtml(user.original_tokens ? (((user.saved_tokens || 0) / user.original_tokens) * 100).toFixed(1) + '%' : '0.0%')}</td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="4" class="empty">No synced user usage yet.</td></tr>';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RTK Admin</title>
+  <style>
+    body {
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      font-family: var(--vscode-font-family);
+      margin: 0;
+      padding: 20px;
+    }
+    h1, h2 { font-weight: 600; margin: 0; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 14px; margin: 18px 0 10px; }
+    .subtitle, .empty { color: var(--vscode-descriptionForeground); }
+    .notice {
+      border: 1px solid var(--vscode-inputValidation-warningBorder);
+      background: var(--vscode-inputValidation-warningBackground);
+      color: var(--vscode-inputValidation-warningForeground);
+      border-radius: 6px;
+      margin: 16px 0;
+      padding: 10px 12px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .metric {
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .metric-label { color: var(--vscode-descriptionForeground); }
+    .metric-value { font-size: 20px; font-weight: 600; margin-top: 4px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td {
+      border-bottom: 1px solid var(--vscode-panel-border);
+      padding: 8px 6px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th { color: var(--vscode-descriptionForeground); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>RTK Admin Dashboard</h1>
+  <div class="subtitle">Organization: ${escapeHtml(data?.organizationId || '')}</div>
+  ${error ? `<div class="notice">${escapeHtml(error.message)}</div>` : ''}
+  <div class="metrics">
+    ${metric('Active Users', summary.active_users || 0)}
+    ${metric('Sessions', summary.sessions || 0)}
+    ${metric('Runs', summary.runs || 0)}
+    ${metric('Saved', `${formatTokens(summary.saved_tokens || 0)} tokens`, `${percent.toFixed(1)}%`)}
+  </div>
+  <h2>User Usage</h2>
+  <table>
+    <thead><tr><th>User</th><th>Runs</th><th>Saved</th><th>Rate</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
 function updateDashboard() {
   if (!dashboardPanel) return;
   dashboardPanel.webview.html = dashboardHtml(lastSnapshot, lastError);
@@ -522,7 +634,51 @@ async function openDashboard() {
   await refreshStatus();
 }
 
+async function openAdminDashboard() {
+  if (!adminPanel) {
+    adminPanel = vscode.window.createWebviewPanel(
+      'rtkAdminDashboard',
+      'RTK Admin',
+      vscode.ViewColumn.One,
+      { enableScripts: false }
+    );
+    adminPanel.onDidDispose(() => {
+      adminPanel = undefined;
+    });
+  } else {
+    adminPanel.reveal();
+  }
+
+  try {
+    const data = await getAdminDashboardData(extensionContext);
+    adminPanel.webview.html = adminDashboardHtml(data, null);
+  } catch (error) {
+    adminPanel.webview.html = adminDashboardHtml(null, error);
+    vscode.window.showErrorMessage(`Unable to open RTK admin dashboard: ${error.message}`);
+  }
+}
+
+let extensionContext;
+
+async function syncUsageNow() {
+  if (!lastSnapshot) {
+    await refreshStatus();
+  }
+  if (lastSnapshot) {
+    await maybeSyncSnapshot(lastSnapshot, true);
+    vscode.window.showInformationMessage('RTK usage sync completed.');
+  }
+}
+
+async function importUsageNow() {
+  if (!lastSnapshot) {
+    await refreshStatus();
+  }
+  await importExistingHistory(extensionContext, lastSnapshot, workspaceCwd());
+}
+
 async function activate(context) {
+  extensionContext = context;
   useWorkspaceSession();
 
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -531,7 +687,12 @@ async function activate(context) {
   context.subscriptions.push(statusItem);
 
   context.subscriptions.push(vscode.commands.registerCommand('rtk.refresh', refreshStatus));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.login', () => loginWithMicrosoft(context)));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.logout', () => logout(context)));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.syncUsage', syncUsageNow));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.importUsage', importUsageNow));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.openDashboard', openDashboard));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.openAdminDashboard', openAdminDashboard));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.newSession', newSession));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.useWorkspaceSession', resetToWorkspaceSession));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.enableAutoWrap', enableAutoWrap));

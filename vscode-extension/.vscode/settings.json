@@ -1,0 +1,4 @@
+{
+  "rtk.apiBaseUrl": "http://localhost:8000",
+  "rtk.syncEnabled": true
+}

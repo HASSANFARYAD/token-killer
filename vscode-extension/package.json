@@ -4,6 +4,14 @@
   "description": "Shows RTK token savings for the current agent chat session in the VS Code status bar.",
   "version": "0.1.0",
   "publisher": "rtk",
+  "scripts": {
+    "package": "vsce package --allow-missing-repository",
+    "publish:dry-run": "vsce package --allow-missing-repository",
+    "install:local": "code --install-extension rtk-token-savings-0.1.0.vsix --force"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -12,6 +20,7 @@
   ],
   "files": [
     "extension.js",
+    "sync.js",
     "README.md",
     "LICENSE",
     "bin",
@@ -20,11 +29,16 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:rtk.refresh",
+    "onCommand:rtk.login",
+    "onCommand:rtk.logout",
+    "onCommand:rtk.syncUsage",
+    "onCommand:rtk.importUsage",
     "onCommand:rtk.startAgentTerminal",
     "onCommand:rtk.enableAutoWrap",
     "onCommand:rtk.useWorkspaceSession",
     "onCommand:rtk.newSession",
-    "onCommand:rtk.openDashboard"
+    "onCommand:rtk.openDashboard",
+    "onCommand:rtk.openAdminDashboard"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -36,6 +50,26 @@
       {
         "command": "rtk.openDashboard",
         "title": "RTK: Open Dashboard"
+      },
+      {
+        "command": "rtk.openAdminDashboard",
+        "title": "RTK: Open Admin Dashboard"
+      },
+      {
+        "command": "rtk.login",
+        "title": "RTK: Login with Microsoft"
+      },
+      {
+        "command": "rtk.logout",
+        "title": "RTK: Logout"
+      },
+      {
+        "command": "rtk.syncUsage",
+        "title": "RTK: Sync Usage Now"
+      },
+      {
+        "command": "rtk.importUsage",
+        "title": "RTK: Import Existing Usage"
       },
       {
         "command": "rtk.newSession",
@@ -62,6 +96,11 @@
           "default": "",
           "description": "Optional external RTK command. Leave empty to use the RTK CLI bundled with this extension."
         },
+        "rtk.apiBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Backend API base URL used for Microsoft login and secure RTK usage sync."
+        },
         "rtk.refreshIntervalMs": {
           "type": "number",
           "default": 3000,
@@ -77,6 +116,17 @@
           "type": "boolean",
           "default": true,
           "description": "Show lifetime total savings when the active session has no recorded runs."
+        },
+        "rtk.syncEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send anonymized RTK usage snapshots and events to the configured backend API after login."
+        },
+        "rtk.syncIntervalMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 5000,
+          "description": "Minimum interval for backend usage sync attempts."
         },
         "rtk.autoWrapTerminals": {
           "type": "boolean",
