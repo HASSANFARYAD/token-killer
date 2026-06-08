@@ -247,6 +247,19 @@ td {
   vertical-align: top;
 }
 
+td strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.subtext {
+  color: #667085;
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
 th {
   color: #667085;
   font-size: 12px;
@@ -263,7 +276,7 @@ th {
   }
 
   .rail nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .grid.two,

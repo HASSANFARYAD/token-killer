@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1080,41 +1080,32 @@ def user_usage_table(
         select(
             User.id,
             User.email,
-            func.count(func.distinct(RtkSession.id)),
             func.count(RtkUsageEvent.id),
             func.coalesce(func.sum(RtkUsageEvent.original_tokens), 0),
             func.coalesce(func.sum(RtkUsageEvent.compressed_tokens), 0),
             func.coalesce(func.sum(RtkUsageEvent.saved_tokens), 0),
         )
-        .select_from(OrganizationMember)
-        .join(User, User.id == OrganizationMember.user_id)
-        .outerjoin(
-            RtkSession,
-            and_(
-                RtkSession.organization_id == OrganizationMember.organization_id,
-                RtkSession.user_id == OrganizationMember.user_id,
-            ),
-        )
-        .outerjoin(RtkUsageEvent, RtkUsageEvent.rtk_session_id == RtkSession.id)
-        .where(OrganizationMember.organization_id == organization_id)
+        .select_from(RtkUsageEvent)
+        .join(RtkSession, RtkSession.id == RtkUsageEvent.rtk_session_id)
+        .join(User, User.id == RtkSession.user_id)
+        .where(RtkSession.organization_id == organization_id)
         .group_by(User.id, User.email)
         .order_by(func.coalesce(func.sum(RtkUsageEvent.saved_tokens), 0).desc())
     )
     if user_ids is not None:
         if not user_ids:
             return UserUsageTableResponse(rows=[])
-        query = query.where(OrganizationMember.user_id.in_(user_ids))
+        query = query.where(RtkSession.user_id.in_(user_ids))
     rows = db.execute(query).all()
     return UserUsageTableResponse(
         rows=[
             UserUsageRow(
                 user_id=row[0],
                 email=row[1],
-                sessions=row[2],
-                runs=row[3],
-                original_tokens=row[4],
-                compressed_tokens=row[5],
-                saved_tokens=row[6],
+                runs=row[2],
+                original_tokens=row[3],
+                compressed_tokens=row[4],
+                saved_tokens=row[5],
             )
             for row in rows
         ]

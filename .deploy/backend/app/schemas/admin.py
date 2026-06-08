@@ -19,7 +19,6 @@ class OrganizationSummaryResponse(BaseModel):
 class UserUsageRow(BaseModel):
     user_id: uuid.UUID
     email: str
-    sessions: int
     runs: int
     original_tokens: int
     compressed_tokens: int

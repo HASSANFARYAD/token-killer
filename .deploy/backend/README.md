@@ -51,67 +51,6 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 The VS Code extension never connects to PostgreSQL directly.
 
-## Docker Local Or VM Deployment
-
-From the repository root, create the Docker env file:
-
-```powershell
-copy backend\.env.docker.example backend\.env.docker
-```
-
-Edit `backend\.env.docker` and set real values for:
-
-```text
-MICROSOFT_TENANT_ID
-MICROSOFT_CLIENT_ID
-APP_SECRET_KEY
-COMMAND_HASH_SECRET
-SEED_SUPER_ADMIN_PASSWORD
-CORS_ORIGINS
-```
-
-Docker Compose starts a PostgreSQL container and the backend overrides `DATABASE_URL` to use it:
-
-```text
-DATABASE_URL=postgresql+psycopg://rtk:rtk@db:5432/rtk
-```
-
-The database is also exposed to the host at `localhost:5433` for local inspection tools.
-
-Run the backend container:
-
-```powershell
-docker compose up --build
-```
-
-The backend will be available at:
-
-```text
-http://localhost:8000
-```
-
-Verify it:
-
-```powershell
-Invoke-RestMethod http://localhost:8000/health
-```
-
-The backend container runs `startup.sh`, waits for PostgreSQL, and applies Alembic migrations automatically before FastAPI starts.
-
-On a Linux VM, install Docker and Docker Compose, copy this repo to the VM, create `backend/.env.docker`, then run:
-
-```bash
-docker compose up -d --build
-```
-
-To make it public, point a domain to the VM public IP and put a reverse proxy in front of port `8000` with HTTPS. The simplest production shape is:
-
-```text
-Internet -> domain -> Nginx/Caddy HTTPS -> http://127.0.0.1:8000
-```
-
-For quick testing without a domain, use a tunnel such as Cloudflare Tunnel or ngrok and point the extension setting `rtk.apiBaseUrl` to the public tunnel URL.
-
 ## Azure App Service Deployment
 
 Use a Linux Azure Web App with Python 3.11+ and an Azure Database for PostgreSQL instance.

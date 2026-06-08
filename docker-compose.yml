@@ -1,0 +1,19 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env.docker
+    ports:
+      - "8000:8000"
+
+  admin-dashboard:
+    build:
+      context: ./admin-dashboard
+    environment:
+      RTK_ADMIN_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5174:80"
+
+volumes:
+  postgres-data:

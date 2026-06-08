@@ -49,6 +49,34 @@ Open:
 http://127.0.0.1:5173
 ```
 
+## Run With Docker
+
+From the repository root, create and edit the backend Docker env file:
+
+```powershell
+copy backend\.env.docker.example backend\.env.docker
+```
+
+Then run the backend and dashboard:
+
+```powershell
+docker compose up --build
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+The dashboard container is served by Nginx and receives its default backend URL from:
+
+```text
+RTK_ADMIN_API_BASE_URL=http://localhost:8000
+```
+
+For a VM or public URL, set `RTK_ADMIN_API_BASE_URL` in `docker-compose.yml` to your public backend URL.
+
 ## Log In As Super Admin
 
 The backend automatically seeds this bootstrap Super Admin on startup after migrations:

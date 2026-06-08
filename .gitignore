@@ -1,4 +1,5 @@
 .env
+backend/.env.docker
 *.pyc
 
 node_modules/

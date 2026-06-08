@@ -30,6 +30,8 @@ const storageKeys = {
   token: 'rtk.admin.token'
 };
 
+const runtimeConfig = window.RTK_ADMIN_CONFIG || {};
+
 function readJson(value, fallback) {
   try {
     return value ? JSON.parse(value) : fallback;
@@ -40,7 +42,7 @@ function readJson(value, fallback) {
 
 function App() {
   const [apiBaseUrl, setApiBaseUrl] = useState(
-    localStorage.getItem(storageKeys.apiBaseUrl) || 'http://127.0.0.1:8000'
+    localStorage.getItem(storageKeys.apiBaseUrl) || runtimeConfig.apiBaseUrl || 'http://127.0.0.1:8000'
   );
   const [token, setToken] = useState(localStorage.getItem(storageKeys.token) || '');
   const [loginEmail, setLoginEmail] = useState('rtk@hazentech.com');
@@ -52,6 +54,7 @@ function App() {
   const [summary, setSummary] = useState(null);
   const [syncStatus, setSyncStatus] = useState(null);
   const [users, setUsers] = useState([]);
+  const [usageUsers, setUsageUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -72,6 +75,8 @@ function App() {
   });
 
   const isConfigured = Boolean(apiBaseUrl && token);
+  const numberFormat = useMemo(() => new Intl.NumberFormat(), []);
+  const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 
   const client = useMemo(() => {
     const base = apiBaseUrl.replace(/\/+$/, '');
@@ -151,9 +156,10 @@ function App() {
     setLoading(true);
     setMessage('');
     try {
-      const [meData, summaryData, usersData, rolesData, departmentsData, syncData, auditData] = await Promise.all([
+      const [meData, summaryData, usageData, usersData, rolesData, departmentsData, syncData, auditData] = await Promise.all([
         client.request('/api/me'),
         client.request('/api/dashboard/summary'),
+        client.request('/api/dashboard/users'),
         client.request('/api/admin/users'),
         client.request('/api/admin/roles').catch(() => ({ rows: [] })),
         client.request('/api/admin/departments').catch(() => ({ rows: [] })),
@@ -168,6 +174,7 @@ function App() {
         });
       setMe(meData);
       setSummary(summaryData);
+      setUsageUsers(usageData.rows || []);
       setUsers(usersData.rows || []);
       setRoles(rolesData.rows || []);
       setDepartments((departmentsData.rows || []).filter((department) => !department.disabled_at));
@@ -299,6 +306,7 @@ function App() {
         <nav>
           <a href="#connection">Connection</a>
           <a href="#azure">Azure AD</a>
+          <a href="#usage">Usage</a>
           <a href="#users">Users</a>
           <a href="#audit">Audit</a>
         </nav>
@@ -365,19 +373,19 @@ function App() {
         <section className="stats">
           <div>
             <span>Users</span>
-            <strong>{summary?.active_users ?? 0}</strong>
+            <strong>{numberFormat.format(summary?.active_users ?? 0)}</strong>
           </div>
           <div>
             <span>Sessions</span>
-            <strong>{summary?.sessions ?? 0}</strong>
+            <strong>{numberFormat.format(summary?.sessions ?? 0)}</strong>
           </div>
           <div>
             <span>Runs</span>
-            <strong>{summary?.runs ?? 0}</strong>
+            <strong>{numberFormat.format(summary?.runs ?? 0)}</strong>
           </div>
           <div>
             <span>Saved Tokens</span>
-            <strong>{summary?.saved_tokens ?? 0}</strong>
+            <strong>{numberFormat.format(summary?.saved_tokens ?? 0)}</strong>
           </div>
         </section>
 
@@ -450,6 +458,53 @@ function App() {
             </button>
           </div>
           <p className="muted">Last sync: {syncStatus ? `${syncStatus.status} - ${syncStatus.id}` : 'none'}</p>
+        </section>
+
+        <section id="usage" className="panel">
+          <div className="section-head">
+            <h2>User Usage History</h2>
+            <p>RTK sessions and token savings for every user visible to this account.</p>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Department</th>
+                  <th>Sessions</th>
+                  <th>Runs</th>
+                  <th>Original Tokens</th>
+                  <th>Compressed Tokens</th>
+                  <th>Saved Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usageUsers.length ? (
+                  usageUsers.map((usage) => {
+                    const user = usersById.get(usage.user_id);
+                    return (
+                      <tr key={usage.user_id}>
+                        <td>
+                          <strong>{user?.display_name || user?.username || usage.email}</strong>
+                          <span className="subtext">{usage.email}</span>
+                        </td>
+                        <td>{user?.departments?.map((department) => department.name).join(', ') || ''}</td>
+                        <td>{numberFormat.format(usage.sessions ?? 0)}</td>
+                        <td>{numberFormat.format(usage.runs ?? 0)}</td>
+                        <td>{numberFormat.format(usage.original_tokens ?? 0)}</td>
+                        <td>{numberFormat.format(usage.compressed_tokens ?? 0)}</td>
+                        <td>{numberFormat.format(usage.saved_tokens ?? 0)}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="7">No usage history loaded.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section id="users" className="panel">

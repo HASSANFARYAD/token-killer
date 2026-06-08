@@ -103,7 +103,7 @@
         },
         "rtk.authRequired": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Require Microsoft login before organization usage sync and protected RTK dashboard data are available."
         },
         "rtk.refreshIntervalMs": {
@@ -124,7 +124,7 @@
         },
         "rtk.syncEnabled": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Send anonymized RTK usage snapshots and events to the configured backend API after login."
         },
         "rtk.syncIntervalMs": {
