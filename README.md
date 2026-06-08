@@ -178,6 +178,17 @@ vscode-extension/
 
 It polls `rtk-node status --json` automatically and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled.
 
+The extension can also sync RTK usage to the backend after Microsoft login. The organization features live behind this architecture:
+
+```text
+VS Code Extension -> Backend API -> PostgreSQL Database
+```
+
+The extension never stores PostgreSQL credentials, Azure AD client secrets, or admin secrets. See:
+
+- `backend/README.md` for Super Admin bootstrap, Azure AD settings, sync, RBAC, and admin API testing.
+- `vscode-extension/README.md` for Extension Development Host testing, Microsoft login, usage sync, and dashboard commands.
+
 Analytics are stored locally in:
 
 ```text

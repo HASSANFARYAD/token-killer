@@ -17,6 +17,7 @@ from app.schemas.usage import (
 from app.services.command_anonymizer import command_category, command_hash
 
 router = APIRouter(prefix="/rtk", tags=["rtk"])
+api_router = APIRouter(prefix="/api/extension", tags=["extension-usage"])
 
 
 def require_owned_session(db: Session, principal: Principal, session_id):
@@ -152,3 +153,9 @@ def my_summary(
         compressed_tokens=row[2],
         saved_tokens=row[3],
     )
+
+
+api_router.post("/rtk/sessions", response_model=RtkSessionResponse)(upsert_session)
+api_router.post("/usage/snapshot", response_model=UsageWriteResponse)(save_snapshot)
+api_router.post("/usage/event", response_model=UsageWriteResponse)(save_events)
+api_router.post("/usage/import", response_model=UsageWriteResponse)(import_events)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.organization import OrganizationMember, User
+from app.models.rbac import Role, UserRole
 from app.services.auth_tokens import decode_access_token
 
 
@@ -18,6 +19,48 @@ bearer = HTTPBearer(auto_error=False)
 class Principal:
     user_id: uuid.UUID
     organization_id: uuid.UUID
+    member_id: uuid.UUID | None = None
+    roles: tuple[str, ...] = ()
+    is_super_admin: bool = False
+
+
+ROLE_PERMISSIONS = {
+    "SUPER_ADMIN": {"*"},
+    "EXECUTIVE": {
+        "dashboard:view_all",
+        "users:view_all",
+        "departments:view_all",
+        "roles:view",
+    },
+    "ORG_ADMIN": {
+        "dashboard:view_all",
+        "users:manage",
+        "users:view_all",
+        "departments:manage",
+        "departments:view_all",
+        "roles:view",
+    },
+    "DEPARTMENT_MANAGER": {
+        "dashboard:view_department",
+        "users:view_department",
+        "departments:view_assigned",
+    },
+    "ANALYST": {
+        "dashboard:view_all",
+        "users:view_all",
+        "departments:view_all",
+    },
+    "READ_ONLY_ADMIN": {
+        "dashboard:view_all",
+        "users:view_all",
+        "departments:view_all",
+        "roles:view",
+    },
+    "EMPLOYEE": {
+        "dashboard:view_own",
+        "users:view_own",
+    },
+}
 
 
 def current_principal(
@@ -48,4 +91,36 @@ def require_active_user(
     )
     if not member:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "organization_membership_required")
-    return principal
+    role_keys = tuple(
+        db.scalars(
+            select(Role.key)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.organization_member_id == member.id)
+        ).all()
+    )
+    return Principal(
+        user_id=principal.user_id,
+        organization_id=principal.organization_id,
+        member_id=member.id,
+        roles=role_keys,
+        is_super_admin=member.is_super_admin or "SUPER_ADMIN" in role_keys,
+    )
+
+
+def has_permission(principal: Principal, permission: str) -> bool:
+    if principal.is_super_admin:
+        return True
+    for role in principal.roles:
+        permissions = ROLE_PERMISSIONS.get(role, set())
+        if "*" in permissions or permission in permissions:
+            return True
+    return False
+
+
+def require_permission(permission: str):
+    def dependency(principal: Principal = Depends(require_active_user)) -> Principal:
+        if not has_permission(principal, permission):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "permission_denied")
+        return principal
+
+    return dependency

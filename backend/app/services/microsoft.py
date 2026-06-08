@@ -24,11 +24,11 @@ async def verify_microsoft_access_token(access_token: str) -> MicrosoftClaims:
     try:
         claims = jwt.get_unverified_claims(access_token)
     except Exception as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_microsoft_token") from exc
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "AZURE_TOKEN_INVALID") from exc
 
     tenant_id = claims.get("tid")
     if tenant_id != get_settings().microsoft_tenant_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant_not_allowed")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "ORG_NOT_CONFIGURED")
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -37,14 +37,14 @@ async def verify_microsoft_access_token(access_token: str) -> MicrosoftClaims:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
     except httpx.HTTPError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "microsoft_graph_unavailable") from exc
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "AZURE_TOKEN_INVALID") from exc
 
     if response.status_code == status.HTTP_401_UNAUTHORIZED:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_microsoft_token")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "AZURE_TOKEN_INVALID")
     if response.status_code == status.HTTP_403_FORBIDDEN:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "microsoft_graph_user_read_required")
     if response.status_code >= 400:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "microsoft_graph_validation_failed")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "AZURE_TOKEN_INVALID")
 
     profile = response.json()
     object_id = profile.get("id") or claims.get("oid") or claims.get("sub")
@@ -58,7 +58,7 @@ async def verify_microsoft_access_token(access_token: str) -> MicrosoftClaims:
     display_name = profile.get("displayName") or claims.get("name")
 
     if not object_id or not email:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing_microsoft_identity_claims")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "AZURE_TOKEN_INVALID")
 
     return MicrosoftClaims(
         tenant_id=tenant_id,

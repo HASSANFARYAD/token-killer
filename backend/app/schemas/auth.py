@@ -13,6 +13,8 @@ class AuthResponse(BaseModel):
     expires_in: int
     user_id: uuid.UUID
     organization_id: uuid.UUID
+    roles: list[str] = []
+    permissions: list[str] = []
 
 
 class CurrentUserResponse(BaseModel):
@@ -21,3 +23,5 @@ class CurrentUserResponse(BaseModel):
     email: str
     display_name: str | None = None
     roles: list[str] = []
+    permissions: list[str] = []
+    departments: list[uuid.UUID] = []

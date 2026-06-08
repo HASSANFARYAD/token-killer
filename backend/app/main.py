@@ -18,9 +18,15 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(auth.router)
+    app.include_router(auth.api_router)
     app.include_router(extension.router)
+    app.include_router(extension.api_router)
     app.include_router(usage.router)
+    app.include_router(usage.api_router)
     app.include_router(admin.router)
+    app.include_router(admin.api_router)
+
+    app.add_api_route("/api/me", auth.me, methods=["GET"], response_model=auth.CurrentUserResponse)
 
     @app.get("/health")
     def health() -> dict:

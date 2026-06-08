@@ -3,6 +3,8 @@ const os = require('os');
 const vscode = require('vscode');
 
 const ACCESS_TOKEN_KEY = 'rtk.accessToken';
+const USER_NOT_REGISTERED_MESSAGE = 'Your account is not registered in the RTK Token Savings system. Please contact your manager or administrator to have your account added before using this extension.';
+const USER_DISABLED_MESSAGE = 'Your account is currently disabled. Please contact your administrator.';
 const INSTALL_KEY_STATE = 'rtk.installKey';
 const INSTALL_ID_STATE = 'rtk.extensionInstallId';
 const IMPORT_DONE_PREFIX = 'rtk.importDone.';
@@ -17,6 +19,10 @@ function apiBaseUrl() {
 
 function syncEnabled() {
   return Boolean(config().get('syncEnabled', false));
+}
+
+function authRequired() {
+  return Boolean(config().get('authRequired', false));
 }
 
 function hashValue(value) {
@@ -70,9 +76,29 @@ async function request(context, path, options = {}) {
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    throw new Error(body.detail || body.error || `HTTP ${response.status}`);
+    const code = body.detail || body.error || `HTTP ${response.status}`;
+    const error = new Error(code);
+    error.code = code;
+    error.status = response.status;
+    throw error;
   }
   return body;
+}
+
+function loginErrorMessage(code) {
+  if (code === 'USER_NOT_REGISTERED') return USER_NOT_REGISTERED_MESSAGE;
+  if (code === 'USER_DISABLED') return USER_DISABLED_MESSAGE;
+  if (code === 'ORG_NOT_CONFIGURED') return 'RTK Token Savings is not configured for your organization. Please contact your administrator.';
+  if (code === 'AZURE_TOKEN_INVALID' || code === 'invalid_microsoft_token') return 'Microsoft login could not be verified. Please sign in again.';
+  return `RTK Microsoft login failed: ${code}`;
+}
+
+async function hasAccessToken(context) {
+  return Boolean(await context.secrets.get(ACCESS_TOKEN_KEY));
+}
+
+async function currentUser(context) {
+  return request(context, '/api/me');
 }
 
 async function loginWithMicrosoft(context) {
@@ -85,7 +111,7 @@ async function loginWithMicrosoft(context) {
   const session = await vscode.authentication.getSession('microsoft', ['openid', 'profile', 'email', 'User.Read'], {
     createIfNone: true
   });
-  const response = await fetch(`${baseUrl}/auth/microsoft`, {
+  const response = await fetch(`${baseUrl}/api/auth/microsoft/verify`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ access_token: session.accessToken })
@@ -93,22 +119,56 @@ async function loginWithMicrosoft(context) {
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    vscode.window.showErrorMessage(`RTK Microsoft login failed: ${body.detail || response.status}`);
+    await context.secrets.delete(ACCESS_TOKEN_KEY);
+    await context.globalState.update(INSTALL_ID_STATE, undefined);
+    vscode.window.showErrorMessage(loginErrorMessage(body.detail || body.error || response.status));
     return;
   }
   await context.secrets.store(ACCESS_TOKEN_KEY, body.access_token);
   vscode.window.showInformationMessage('RTK Microsoft login completed.');
+  return body;
 }
 
 async function logout(context) {
   try {
-    await request(context, '/auth/logout', { method: 'POST', body: '{}' });
+    await request(context, '/api/auth/logout', { method: 'POST', body: '{}' });
   } catch {
     // Local logout should still clear credentials if the backend is unavailable.
   }
   await context.secrets.delete(ACCESS_TOKEN_KEY);
   await context.globalState.update(INSTALL_ID_STATE, undefined);
   vscode.window.showInformationMessage('RTK logged out.');
+}
+
+async function ensureAuthenticated(context, interactive = false) {
+  if (!apiBaseUrl()) {
+    if (authRequired()) vscode.window.showErrorMessage('Set rtk.apiBaseUrl before using RTK Token Savings authentication.');
+    return false;
+  }
+
+  if (await hasAccessToken(context)) {
+    try {
+      await currentUser(context);
+      return true;
+    } catch (error) {
+      if (error.status !== 401 && error.status !== 403) {
+        return !authRequired();
+      }
+      await context.secrets.delete(ACCESS_TOKEN_KEY);
+      await context.globalState.update(INSTALL_ID_STATE, undefined);
+      if (error.code === 'USER_DISABLED') {
+        vscode.window.showErrorMessage(USER_DISABLED_MESSAGE);
+        return false;
+      }
+    }
+  }
+
+  if (!authRequired() && !interactive) return false;
+  const choice = interactive
+    ? 'Sign in'
+    : await vscode.window.showInformationMessage('Sign in with Microsoft to use RTK Token Savings for your organization.', 'Sign in', 'Not now');
+  if (choice !== 'Sign in') return false;
+  return Boolean(await loginWithMicrosoft(context));
 }
 
 async function ensureInstall(context) {
@@ -122,7 +182,7 @@ async function ensureInstall(context) {
   if (installId) return installId;
 
   const extension = vscode.extensions.getExtension('rtk.rtk-token-savings');
-  const body = await request(context, '/extension/installs', {
+  const body = await request(context, '/api/extension/installs', {
     method: 'POST',
     body: JSON.stringify({
       install_key: installKey,
@@ -139,7 +199,7 @@ async function ensureInstall(context) {
 async function ensureSession(context, snapshot, workspacePath) {
   const installId = await ensureInstall(context);
   const session = snapshot?.session || {};
-  const body = await request(context, '/rtk/sessions', {
+  const body = await request(context, '/api/extension/rtk/sessions', {
     method: 'POST',
     body: JSON.stringify({
       extension_install_id: installId,
@@ -170,13 +230,12 @@ function eventFromRun(run, rtkSessionId) {
 
 async function syncSnapshot(context, snapshot, workspacePath) {
   if (!syncEnabled()) return;
-  const token = await context.secrets.get(ACCESS_TOKEN_KEY);
-  if (!token) return;
+  if (!(await hasAccessToken(context))) return;
   if (!snapshot?.session?.id) return;
 
   const rtkSessionId = await ensureSession(context, snapshot, workspacePath);
   const session = snapshot.session;
-  await request(context, '/rtk/usage/snapshots', {
+  await request(context, '/api/extension/usage/snapshot', {
     method: 'POST',
     body: JSON.stringify({
       rtk_session_id: rtkSessionId,
@@ -203,7 +262,7 @@ async function syncSnapshot(context, snapshot, workspacePath) {
 
   const events = (session.recentRuns || []).map((run) => eventFromRun(run, rtkSessionId));
   if (events.length) {
-    await request(context, '/rtk/usage/events', {
+    await request(context, '/api/extension/usage/event', {
       method: 'POST',
       body: JSON.stringify({ events })
     });
@@ -244,7 +303,7 @@ async function importExistingHistory(context, snapshot, workspacePath) {
     return;
   }
   const events = runs.map((run) => eventFromRun(run, rtkSessionId));
-  const result = await request(context, '/rtk/usage/import', {
+  const result = await request(context, '/api/extension/usage/import', {
     method: 'POST',
     body: JSON.stringify({ events })
   });
@@ -253,11 +312,11 @@ async function importExistingHistory(context, snapshot, workspacePath) {
 }
 
 async function getAdminDashboardData(context) {
-  const me = await request(context, '/auth/me');
+  const me = await request(context, '/api/me');
   const organizationId = me.organization_id;
   const [summary, users] = await Promise.all([
-    request(context, `/admin/orgs/${organizationId}/summary`),
-    request(context, `/admin/orgs/${organizationId}/users`)
+    request(context, '/api/dashboard/summary'),
+    request(context, '/api/dashboard/users')
   ]);
   return {
     me,
@@ -269,6 +328,8 @@ async function getAdminDashboardData(context) {
 
 module.exports = {
   getAdminDashboardData,
+  ensureAuthenticated,
+  hasAccessToken,
   importExistingHistory,
   loginWithMicrosoft,
   logout,

@@ -101,6 +101,11 @@
           "default": "",
           "description": "Backend API base URL used for Microsoft login and secure RTK usage sync."
         },
+        "rtk.authRequired": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require Microsoft login before organization usage sync and protected RTK dashboard data are available."
+        },
         "rtk.refreshIntervalMs": {
           "type": "number",
           "default": 3000,

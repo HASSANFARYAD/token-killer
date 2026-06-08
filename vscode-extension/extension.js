@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
+  ensureAuthenticated,
   getAdminDashboardData,
   importExistingHistory,
   loginWithMicrosoft,
@@ -635,6 +636,7 @@ async function openDashboard() {
 }
 
 async function openAdminDashboard() {
+  if (!(await ensureAuthenticated(extensionContext, true))) return;
   if (!adminPanel) {
     adminPanel = vscode.window.createWebviewPanel(
       'rtkAdminDashboard',
@@ -661,6 +663,7 @@ async function openAdminDashboard() {
 let extensionContext;
 
 async function syncUsageNow() {
+  if (!(await ensureAuthenticated(extensionContext, true))) return;
   if (!lastSnapshot) {
     await refreshStatus();
   }
@@ -671,6 +674,7 @@ async function syncUsageNow() {
 }
 
 async function importUsageNow() {
+  if (!(await ensureAuthenticated(extensionContext, true))) return;
   if (!lastSnapshot) {
     await refreshStatus();
   }
@@ -711,6 +715,7 @@ async function activate(context) {
   });
 
   await contextStateSet();
+  await ensureAuthenticated(context, false);
   startTimer(context);
   await refreshStatus();
   await maybePromptAutoWrap(context);

@@ -10,6 +10,7 @@ from app.models.rtk import ExtensionInstall
 from app.schemas.usage import ExtensionInstallRequest, ExtensionInstallResponse
 
 router = APIRouter(prefix="/extension", tags=["extension"])
+api_router = APIRouter(prefix="/api/extension", tags=["extension"])
 
 
 @router.post("/installs", response_model=ExtensionInstallResponse)
@@ -46,3 +47,6 @@ def register_install(
 
     db.commit()
     return ExtensionInstallResponse(id=install.id)
+
+
+api_router.post("/installs", response_model=ExtensionInstallResponse)(register_install)
