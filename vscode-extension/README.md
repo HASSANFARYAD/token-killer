@@ -153,6 +153,9 @@ This opens the current VS Code admin webview. It calls backend dashboard APIs:
 - `GET /api/me`
 - `GET /api/dashboard/summary`
 - `GET /api/dashboard/users`
+- `GET /api/admin/users`
+- `GET /api/admin/azure-ad/settings`
+- `GET /api/admin/azure-ad/sync-status`
 
 Access is enforced by the backend:
 
@@ -160,7 +163,19 @@ Access is enforced by the backend:
 - Department managers see only scoped department data.
 - Employees are limited to their own data.
 
-This is not yet a full management UI for Azure AD settings, departments, and users. Those admin operations currently exist as backend APIs. Use PowerShell, curl, Postman, or another API client to call them.
+Super Admins can use this webview to:
+
+- Add or update Azure AD tenant/client settings.
+- Save the backend environment variable name that contains the Azure AD client secret.
+- Edit job-title-to-role mapping rules as JSON.
+- Delete Azure AD settings.
+- Test the Azure AD connection.
+- Fetch users from Azure AD.
+- View imported users and their roles/status.
+
+The Azure AD client secret value itself is not entered in the extension. Put it in the backend environment, then enter only the environment variable name, for example `AZURE_AD_CLIENT_SECRET`.
+
+Department and role management APIs exist in the backend, but the current VS Code UI focuses on Azure AD settings and user import.
 
 ## Backend Admin APIs During Testing
 

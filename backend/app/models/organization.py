@@ -27,8 +27,10 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     email: Mapped[str] = mapped_column(CITEXT(), nullable=False, unique=True)
+    username: Mapped[str | None] = mapped_column(String(128), unique=True)
     display_name: Mapped[str | None] = mapped_column(String(255))
     job_title: Mapped[str | None] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(512))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()

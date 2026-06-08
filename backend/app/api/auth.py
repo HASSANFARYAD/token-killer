@@ -8,9 +8,10 @@ from app.db import get_db
 from app.models.identity import MicrosoftIdentity
 from app.models.organization import DepartmentManager, DepartmentUser, Organization, OrganizationMember, User
 from app.models.rbac import Role, UserRole
-from app.schemas.auth import AuthResponse, CurrentUserResponse, MicrosoftLoginRequest
+from app.schemas.auth import AuthResponse, CurrentUserResponse, MicrosoftLoginRequest, PasswordLoginRequest
 from app.services.auth_tokens import create_access_token
 from app.services.microsoft import verify_microsoft_access_token
+from app.services.passwords import verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 api_router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -97,6 +98,40 @@ async def verify_microsoft_login(
 
 router.post("/microsoft", response_model=AuthResponse)(verify_microsoft_login)
 api_router.post("/microsoft/verify", response_model=AuthResponse)(verify_microsoft_login)
+
+
+@api_router.post("/login", response_model=AuthResponse)
+def password_login(
+    body: PasswordLoginRequest,
+    db: Session = Depends(get_db),
+    _: None = rate_limit(20, 60),
+) -> AuthResponse:
+    user = db.scalar(select(User).where(User.email == body.email.lower()))
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "INVALID_CREDENTIALS")
+    if user.disabled_at:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "USER_DISABLED")
+    member = db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == user.id,
+            OrganizationMember.status == "active",
+        )
+    )
+    if not member:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "USER_NOT_REGISTERED")
+    organization = db.get(Organization, member.organization_id)
+    if not organization:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "ORG_NOT_CONFIGURED")
+    roles = role_keys_for_member(db, member.id)
+    token, expires_in = create_access_token(user.id, organization.id)
+    return AuthResponse(
+        access_token=token,
+        expires_in=expires_in,
+        user_id=user.id,
+        organization_id=organization.id,
+        roles=roles,
+        permissions=permissions_for_roles(roles, member.is_super_admin),
+    )
 
 
 @router.post("/logout")

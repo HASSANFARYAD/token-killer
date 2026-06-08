@@ -188,6 +188,7 @@ The extension never stores PostgreSQL credentials, Azure AD client secrets, or a
 
 - `backend/README.md` for Super Admin bootstrap, Azure AD settings, sync, RBAC, and admin API testing.
 - `vscode-extension/README.md` for Extension Development Host testing, Microsoft login, usage sync, and dashboard commands.
+- `admin-dashboard/README.md` for the browser Super Admin dashboard.
 
 Analytics are stored locally in:
 

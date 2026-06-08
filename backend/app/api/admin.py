@@ -25,7 +25,7 @@ from app.models.rbac import Role, UserRole, UserRoleOverride
 from app.models.rtk import RtkSession, RtkUsageEvent
 from app.schemas.admin import OrganizationSummaryResponse, UserUsageRow, UserUsageTableResponse
 from app.services.audit import record_audit
-from app.services.azure_ad_sync import graph_access_token, sync_users_from_azure_ad
+from app.services.azure_ad_sync import ENV_VAR_NAME_PATTERN, graph_access_token, sync_users_from_azure_ad
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 api_router = APIRouter(prefix="/api", tags=["admin"])
@@ -64,13 +64,16 @@ class SuperAdminSetupRequest(BaseModel):
 
 
 class UserCreateRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
     email: str = Field(min_length=3, max_length=255)
     display_name: str | None = Field(default=None, max_length=255)
     job_title: str | None = Field(default=None, max_length=255)
     role: str = Field(default="EMPLOYEE", max_length=64)
+    department_id: uuid.UUID | None = None
 
 
 class UserUpdateRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=1, max_length=128)
     email: str | None = Field(default=None, min_length=3, max_length=255)
     display_name: str | None = Field(default=None, max_length=255)
     job_title: str | None = Field(default=None, max_length=255)
@@ -149,22 +152,27 @@ def role_rows_for_member(db: Session, member_id: uuid.UUID) -> list[str]:
 
 def user_payload(db: Session, user: User, member: OrganizationMember) -> dict:
     roles = role_rows_for_member(db, member.id)
-    departments = list(
-        db.scalars(select(DepartmentUser.department_id).where(DepartmentUser.user_id == user.id))
-    )
+    user_departments = db.execute(
+        select(Department.id, Department.name)
+        .join(DepartmentUser, DepartmentUser.department_id == Department.id)
+        .where(DepartmentUser.user_id == user.id)
+        .order_by(Department.name)
+    ).all()
     managed = list(
         db.scalars(select(DepartmentManager.department_id).where(DepartmentManager.user_id == user.id))
     )
     return {
         "id": user.id,
         "email": user.email,
+        "username": user.username,
         "display_name": user.display_name,
         "job_title": user.job_title,
         "status": member.status,
         "disabled_at": user.disabled_at,
         "roles": roles,
         "permissions": permissions_for_roles(roles, member.is_super_admin),
-        "department_ids": departments,
+        "department_ids": [department_id for department_id, _ in user_departments],
+        "departments": [{"id": department_id, "name": name} for department_id, name in user_departments],
         "managed_department_ids": managed,
     }
 
@@ -328,8 +336,15 @@ def upsert_azure_ad_settings(
         db.add(settings)
     settings.tenant_id = body.tenant_id
     settings.client_id = body.client_id
-    settings.client_secret_ref = body.client_secret_ref
-    settings.encrypted_client_secret = body.encrypted_client_secret
+    if body.client_secret_ref and not ENV_VAR_NAME_PATTERN.fullmatch(body.client_secret_ref):
+        settings.client_secret_ref = None
+        settings.encrypted_client_secret = body.client_secret_ref
+    elif body.client_secret_ref:
+        settings.client_secret_ref = body.client_secret_ref
+        settings.encrypted_client_secret = None
+    elif body.encrypted_client_secret is not None:
+        settings.client_secret_ref = None
+        settings.encrypted_client_secret = body.encrypted_client_secret
     settings.role_mapping_rules = body.role_mapping_rules
     settings.enabled = body.enabled
     record_audit(
@@ -525,14 +540,40 @@ def create_user(
     principal: Principal = Depends(require_permission("users:manage")),
     db: Session = Depends(get_db),
 ) -> dict:
+    role_key = body.role.upper()
     roles = ensure_system_roles(db, principal.organization_id)
-    if body.role == "SUPER_ADMIN":
+    if role_key == "SUPER_ADMIN":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "SUPER_ADMIN_BOOTSTRAP_REQUIRED")
+    role = roles.get(role_key) or db.scalar(
+        select(Role).where(Role.organization_id == principal.organization_id, Role.key == role_key)
+    )
+    if not role:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ROLE_NOT_FOUND")
+    department: Department | None = None
+    if body.department_id:
+        department = db.get(Department, body.department_id)
+        if (
+            not department
+            or department.organization_id != principal.organization_id
+            or department.disabled_at is not None
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "DEPARTMENT_NOT_FOUND")
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     if not user:
-        user = User(email=body.email.lower(), display_name=body.display_name, job_title=body.job_title)
+        user = User(
+            email=body.email.lower(),
+            username=body.username.strip(),
+            display_name=body.display_name,
+            job_title=body.job_title,
+        )
         db.add(user)
         db.flush()
+    else:
+        user.username = body.username.strip()
+        if body.display_name is not None:
+            user.display_name = body.display_name
+        if body.job_title is not None:
+            user.job_title = body.job_title
     member = db.scalar(
         select(OrganizationMember).where(
             OrganizationMember.organization_id == principal.organization_id,
@@ -547,10 +588,13 @@ def create_user(
         )
         db.add(member)
         db.flush()
-    role = roles.get(body.role)
-    if not role:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ROLE_NOT_FOUND")
     assign_role(db, member, role)
+    if department:
+        existing_department_user = db.get(
+            DepartmentUser, {"department_id": department.id, "user_id": user.id}
+        )
+        if not existing_department_user:
+            db.add(DepartmentUser(department_id=department.id, user_id=user.id))
     record_audit(
         db,
         organization_id=principal.organization_id,
@@ -558,9 +602,13 @@ def create_user(
         action="user.created",
         target_type="user",
         target_id=user.id,
-        metadata={"role": role.key},
+        metadata={"role": role.key, "department_id": str(department.id) if department else None},
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "USER_ALREADY_EXISTS") from exc
     return user_payload(db, user, member)
 
 
@@ -634,6 +682,8 @@ def update_user(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "USER_NOT_FOUND")
+    if body.username is not None:
+        user.username = body.username
     if body.email:
         user.email = body.email.lower()
     if body.display_name is not None:

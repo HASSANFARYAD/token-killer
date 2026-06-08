@@ -7,6 +7,11 @@ class MicrosoftLoginRequest(BaseModel):
     access_token: str = Field(min_length=20)
 
 
+class PasswordLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+
+
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

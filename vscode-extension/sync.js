@@ -213,6 +213,26 @@ async function ensureSession(context, snapshot, workspacePath) {
   return body.id;
 }
 
+async function ensureRunSession(context, run, fallbackSnapshot, workspacePath) {
+  const installId = await ensureInstall(context);
+  const fallbackSession = fallbackSnapshot?.session || {};
+  const clientSessionId = run.sessionId || fallbackSession.id;
+  if (!clientSessionId) return null;
+
+  const body = await request(context, '/api/extension/rtk/sessions', {
+    method: 'POST',
+    body: JSON.stringify({
+      extension_install_id: installId,
+      client_session_id: clientSessionId,
+      workspace_hash: workspaceHash(clientSessionId || workspacePath),
+      label: run.sessionLabel || fallbackSession.label || null,
+      started_at: clientSessionId === fallbackSession.id ? fallbackSession.startedAt || null : null,
+      ended_at: null
+    })
+  });
+  return body.id;
+}
+
 function eventFromRun(run, rtkSessionId) {
   return {
     rtk_session_id: rtkSessionId,
@@ -226,6 +246,29 @@ function eventFromRun(run, rtkSessionId) {
     saved_tokens: Math.max(0, (run.originalTokens || 0) - (run.compressedTokens || 0)),
     truncated: Boolean(run.truncated)
   };
+}
+
+async function syncRuns(context, runs, snapshot, workspacePath) {
+  const events = [];
+  const sessionIds = new Map();
+  for (const run of runs) {
+    const clientSessionId = run.sessionId || snapshot?.session?.id;
+    if (!clientSessionId) continue;
+    let rtkSessionId = sessionIds.get(clientSessionId);
+    if (!rtkSessionId) {
+      rtkSessionId = await ensureRunSession(context, run, snapshot, workspacePath);
+      if (!rtkSessionId) continue;
+      sessionIds.set(clientSessionId, rtkSessionId);
+    }
+    events.push(eventFromRun(run, rtkSessionId));
+  }
+
+  if (events.length) {
+    await request(context, '/api/extension/usage/event', {
+      method: 'POST',
+      body: JSON.stringify({ events })
+    });
+  }
 }
 
 async function syncSnapshot(context, snapshot, workspacePath) {
@@ -260,13 +303,8 @@ async function syncSnapshot(context, snapshot, workspacePath) {
     })
   });
 
-  const events = (session.recentRuns || []).map((run) => eventFromRun(run, rtkSessionId));
-  if (events.length) {
-    await request(context, '/api/extension/usage/event', {
-      method: 'POST',
-      body: JSON.stringify({ events })
-    });
-  }
+  const runs = snapshot.total?.recentRuns?.length ? snapshot.total.recentRuns : session.recentRuns || [];
+  await syncRuns(context, runs, snapshot, workspacePath);
 }
 
 async function importExistingHistory(context, snapshot, workspacePath) {
@@ -296,42 +334,88 @@ async function importExistingHistory(context, snapshot, workspacePath) {
   );
   if (choice !== 'Import') return;
 
-  const rtkSessionId = await ensureSession(context, snapshot, workspacePath);
-  const runs = snapshot.session.recentRuns || [];
+  const runs = snapshot.total?.recentRuns?.length ? snapshot.total.recentRuns : snapshot.session.recentRuns || [];
   if (!runs.length) {
     vscode.window.showInformationMessage('No recent RTK runs found to import.');
     return;
   }
-  const events = runs.map((run) => eventFromRun(run, rtkSessionId));
-  const result = await request(context, '/api/extension/usage/import', {
-    method: 'POST',
-    body: JSON.stringify({ events })
-  });
+  await syncRuns(context, runs, snapshot, workspacePath);
   await context.globalState.update(importKey, true);
-  vscode.window.showInformationMessage(`Imported RTK usage: ${result.inserted} new, ${result.duplicates} duplicates.`);
+  vscode.window.showInformationMessage(`Imported RTK usage history from ${runs.length} recent runs.`);
 }
 
 async function getAdminDashboardData(context) {
   const me = await request(context, '/api/me');
   const organizationId = me.organization_id;
-  const [summary, users] = await Promise.all([
+  const [summary, usageUsers, adminUsers, syncStatus] = await Promise.all([
     request(context, '/api/dashboard/summary'),
-    request(context, '/api/dashboard/users')
+    request(context, '/api/dashboard/users'),
+    request(context, '/api/admin/users').catch(() => ({ rows: [] })),
+    request(context, '/api/admin/azure-ad/sync-status').catch(() => ({ last_run: null }))
   ]);
+  const azureSettings = await request(context, '/api/admin/azure-ad/settings').catch((error) => {
+    if (error.code === 'AZURE_AD_SETTINGS_NOT_FOUND') return null;
+    throw error;
+  });
   return {
     me,
     organizationId,
     summary,
-    users: users.rows || []
+    users: usageUsers.rows || [],
+    adminUsers: adminUsers.rows || [],
+    azureSettings,
+    syncStatus
   };
 }
 
+async function saveAzureAdSettings(context, settings) {
+  return request(context, '/api/admin/azure-ad/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings)
+  });
+}
+
+async function deleteAzureAdSettings(context) {
+  return request(context, '/api/admin/azure-ad/settings', {
+    method: 'DELETE'
+  });
+}
+
+async function testAzureAdConnection(context) {
+  return request(context, '/api/admin/azure-ad/test', {
+    method: 'POST',
+    body: '{}'
+  });
+}
+
+async function syncAzureAdUsers(context) {
+  return request(context, '/api/admin/azure-ad/sync-users', {
+    method: 'POST',
+    body: '{}'
+  });
+}
+
+async function getAzureAdSyncStatus(context) {
+  return request(context, '/api/admin/azure-ad/sync-status');
+}
+
+async function getAdminUsers(context) {
+  const users = await request(context, '/api/admin/users');
+  return users.rows || [];
+}
+
 module.exports = {
+  deleteAzureAdSettings,
   getAdminDashboardData,
+  getAdminUsers,
+  getAzureAdSyncStatus,
   ensureAuthenticated,
   hasAccessToken,
   importExistingHistory,
   loginWithMicrosoft,
   logout,
+  saveAzureAdSettings,
+  syncAzureAdUsers,
+  testAzureAdConnection,
   syncSnapshot
 };

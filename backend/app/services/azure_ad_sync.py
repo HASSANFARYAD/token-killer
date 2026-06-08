@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -43,6 +44,8 @@ SYSTEM_ROLES = {
     "EMPLOYEE": "Employee",
 }
 
+ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 @dataclass(frozen=True)
 class SyncResult:
@@ -55,7 +58,11 @@ class SyncResult:
 
 def resolve_client_secret(settings: AzureAdSetting) -> str | None:
     if settings.client_secret_ref:
-        return os.environ.get(settings.client_secret_ref)
+        secret = os.environ.get(settings.client_secret_ref)
+        if secret:
+            return secret
+        if not ENV_VAR_NAME_PATTERN.fullmatch(settings.client_secret_ref):
+            return settings.client_secret_ref
     return settings.encrypted_client_secret
 
 

@@ -4,11 +4,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
+  deleteAzureAdSettings,
   ensureAuthenticated,
   getAdminDashboardData,
+  getAdminUsers,
+  getAzureAdSyncStatus,
   importExistingHistory,
   loginWithMicrosoft,
   logout,
+  saveAzureAdSettings,
+  syncAzureAdUsers,
+  testAzureAdConnection,
   syncSnapshot
 } = require('./sync');
 
@@ -529,6 +535,9 @@ function dashboardHtml(snapshot, error) {
 function adminDashboardHtml(data, error) {
   const summary = data?.summary || {};
   const users = data?.users || [];
+  const adminUsers = data?.adminUsers || [];
+  const settings = data?.azureSettings || {};
+  const syncStatus = data?.syncStatus?.last_run || null;
   const percent = summary.original_tokens
     ? ((summary.saved_tokens || 0) / summary.original_tokens) * 100
     : 0;
@@ -542,6 +551,26 @@ function adminDashboardHtml(data, error) {
       </tr>
     `).join('')
     : '<tr><td colspan="4" class="empty">No synced user usage yet.</td></tr>';
+  const userRows = adminUsers.length
+    ? adminUsers.map((user) => `
+      <tr>
+        <td>${escapeHtml(user.email)}</td>
+        <td>${escapeHtml(user.display_name || '')}</td>
+        <td>${escapeHtml((user.roles || []).join(', ') || '')}</td>
+        <td>${escapeHtml(user.status || '')}</td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="4" class="empty">No users loaded.</td></tr>';
+  const initialRoleRules = JSON.stringify(settings.role_mapping_rules || {
+    CEO: 'EXECUTIVE',
+    Chief: 'EXECUTIVE',
+    Director: 'EXECUTIVE',
+    VP: 'EXECUTIVE',
+    Manager: 'DEPARTMENT_MANAGER',
+    Lead: 'DEPARTMENT_MANAGER',
+    Engineer: 'EMPLOYEE',
+    Developer: 'EMPLOYEE'
+  }, null, 2);
 
   return `<!doctype html>
 <html lang="en">
@@ -561,6 +590,57 @@ function adminDashboardHtml(data, error) {
     h1 { font-size: 20px; }
     h2 { font-size: 14px; margin: 18px 0 10px; }
     .subtitle, .empty { color: var(--vscode-descriptionForeground); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0;
+    }
+    button {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: 0;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 7px 10px;
+    }
+    button.secondary {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+    }
+    button.danger {
+      background: var(--vscode-inputValidation-errorBackground);
+      color: var(--vscode-inputValidation-errorForeground);
+      border: 1px solid var(--vscode-inputValidation-errorBorder);
+    }
+    label {
+      color: var(--vscode-descriptionForeground);
+      display: block;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    input, textarea {
+      box-sizing: border-box;
+      width: 100%;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 7px 8px;
+    }
+    textarea {
+      min-height: 150px;
+      resize: vertical;
+      font-family: var(--vscode-editor-font-family);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .wide {
+      grid-column: 1 / -1;
+    }
     .notice {
       border: 1px solid var(--vscode-inputValidation-warningBorder);
       background: var(--vscode-inputValidation-warningBackground);
@@ -582,12 +662,22 @@ function adminDashboardHtml(data, error) {
     }
     .metric-label { color: var(--vscode-descriptionForeground); }
     .metric-value { font-size: 20px; font-weight: 600; margin-top: 4px; }
+    .panel {
+      border-top: 1px solid var(--vscode-panel-border);
+      margin-top: 20px;
+      padding-top: 16px;
+    }
+    .status {
+      color: var(--vscode-descriptionForeground);
+      margin-top: 8px;
+      min-height: 18px;
+    }
     table { border-collapse: collapse; width: 100%; }
     th, td {
       border-bottom: 1px solid var(--vscode-panel-border);
       padding: 8px 6px;
       text-align: left;
-      white-space: nowrap;
+      vertical-align: top;
     }
     th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   </style>
@@ -596,17 +686,99 @@ function adminDashboardHtml(data, error) {
   <h1>RTK Admin Dashboard</h1>
   <div class="subtitle">Organization: ${escapeHtml(data?.organizationId || '')}</div>
   ${error ? `<div class="notice">${escapeHtml(error.message)}</div>` : ''}
+  <div id="message" class="status"></div>
   <div class="metrics">
     ${metric('Active Users', summary.active_users || 0)}
     ${metric('Sessions', summary.sessions || 0)}
     ${metric('Runs', summary.runs || 0)}
     ${metric('Saved', `${formatTokens(summary.saved_tokens || 0)} tokens`, `${percent.toFixed(1)}%`)}
   </div>
+
+  <section class="panel">
+    <h2>Azure AD Settings</h2>
+    <div class="form-grid">
+      <div>
+        <label for="tenantId">Tenant ID</label>
+        <input id="tenantId" value="${escapeHtml(settings.tenant_id || '')}">
+      </div>
+      <div>
+        <label for="clientId">Client ID</label>
+        <input id="clientId" value="${escapeHtml(settings.client_id || '')}">
+      </div>
+      <div>
+        <label for="clientSecretRef">Client Secret Environment Variable</label>
+        <input id="clientSecretRef" value="${escapeHtml(settings.client_secret_ref || 'AZURE_AD_CLIENT_SECRET')}">
+      </div>
+      <div>
+        <label for="enabled">Enabled</label>
+        <input id="enabled" type="checkbox" ${settings.enabled === false ? '' : 'checked'}>
+      </div>
+      <div class="wide">
+        <label for="roleRules">Role Mapping Rules JSON</label>
+        <textarea id="roleRules">${escapeHtml(initialRoleRules)}</textarea>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="saveSettings">Save Settings</button>
+      <button id="testConnection" class="secondary">Test Connection</button>
+      <button id="syncUsers" class="secondary">Fetch Users From Azure AD</button>
+      <button id="deleteSettings" class="danger">Delete Settings</button>
+      <button id="refreshAdmin" class="secondary">Refresh</button>
+    </div>
+    <div class="status">Last sync: ${escapeHtml(syncStatus ? `${syncStatus.status} (${syncStatus.id})` : 'none')}</div>
+  </section>
+
+  <section class="panel">
+    <h2>Imported Users</h2>
+    <table>
+      <thead><tr><th>Email</th><th>Name</th><th>Roles</th><th>Status</th></tr></thead>
+      <tbody id="usersBody">${userRows}</tbody>
+    </table>
+  </section>
+
   <h2>User Usage</h2>
   <table>
     <thead><tr><th>User</th><th>Runs</th><th>Saved</th><th>Rate</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
+  <script>
+    const vscode = acquireVsCodeApi();
+    const message = document.getElementById('message');
+    function setMessage(text) {
+      message.textContent = text || '';
+    }
+    function settingsPayload() {
+      let roleRules;
+      try {
+        roleRules = JSON.parse(document.getElementById('roleRules').value || '{}');
+      } catch (error) {
+        throw new Error('Role mapping rules must be valid JSON.');
+      }
+      return {
+        tenant_id: document.getElementById('tenantId').value.trim(),
+        client_id: document.getElementById('clientId').value.trim() || null,
+        client_secret_ref: document.getElementById('clientSecretRef').value.trim() || null,
+        role_mapping_rules: roleRules,
+        enabled: document.getElementById('enabled').checked
+      };
+    }
+    function post(command, payload) {
+      setMessage('Working...');
+      vscode.postMessage({ command, payload });
+    }
+    document.getElementById('saveSettings').addEventListener('click', () => {
+      try { post('saveAzureSettings', settingsPayload()); }
+      catch (error) { setMessage(error.message); }
+    });
+    document.getElementById('testConnection').addEventListener('click', () => post('testAzureConnection'));
+    document.getElementById('syncUsers').addEventListener('click', () => post('syncAzureUsers'));
+    document.getElementById('deleteSettings').addEventListener('click', () => post('deleteAzureSettings'));
+    document.getElementById('refreshAdmin').addEventListener('click', () => post('refreshAdmin'));
+    window.addEventListener('message', (event) => {
+      const msg = event.data || {};
+      if (msg.type === 'status') setMessage(msg.text);
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -635,6 +807,57 @@ async function openDashboard() {
   await refreshStatus();
 }
 
+async function refreshAdminDashboard() {
+  if (!adminPanel) return;
+  try {
+    const data = await getAdminDashboardData(extensionContext);
+    adminPanel.webview.html = adminDashboardHtml(data, null);
+  } catch (error) {
+    adminPanel.webview.html = adminDashboardHtml(null, error);
+    vscode.window.showErrorMessage(`Unable to refresh RTK admin dashboard: ${error.message}`);
+  }
+}
+
+async function handleAdminMessage(message) {
+  if (!adminPanel) return;
+  const postStatus = (text) => adminPanel?.webview.postMessage({ type: 'status', text });
+  try {
+    if (message.command === 'saveAzureSettings') {
+      await saveAzureAdSettings(extensionContext, message.payload);
+      postStatus('Azure AD settings saved.');
+      await refreshAdminDashboard();
+    } else if (message.command === 'deleteAzureSettings') {
+      const choice = await vscode.window.showWarningMessage(
+        'Delete Azure AD settings for this organization?',
+        'Delete',
+        'Cancel'
+      );
+      if (choice !== 'Delete') {
+        postStatus('Delete cancelled.');
+        return;
+      }
+      await deleteAzureAdSettings(extensionContext);
+      postStatus('Azure AD settings deleted.');
+      await refreshAdminDashboard();
+    } else if (message.command === 'testAzureConnection') {
+      await testAzureAdConnection(extensionContext);
+      postStatus('Azure AD connection succeeded.');
+    } else if (message.command === 'syncAzureUsers') {
+      const result = await syncAzureAdUsers(extensionContext);
+      postStatus(`Azure AD sync ${result.status}: ${result.imported_users || 0} imported, ${result.updated_users || 0} updated.`);
+      await refreshAdminDashboard();
+    } else if (message.command === 'refreshAdmin') {
+      const status = await getAzureAdSyncStatus(extensionContext).catch(() => null);
+      const users = await getAdminUsers(extensionContext).catch(() => []);
+      postStatus(`Refreshed. Users: ${users.length}. Last sync: ${status?.last_run?.status || 'none'}.`);
+      await refreshAdminDashboard();
+    }
+  } catch (error) {
+    postStatus(error.message);
+    vscode.window.showErrorMessage(`RTK admin action failed: ${error.message}`);
+  }
+}
+
 async function openAdminDashboard() {
   if (!(await ensureAuthenticated(extensionContext, true))) return;
   if (!adminPanel) {
@@ -642,8 +865,9 @@ async function openAdminDashboard() {
       'rtkAdminDashboard',
       'RTK Admin',
       vscode.ViewColumn.One,
-      { enableScripts: false }
+      { enableScripts: true }
     );
+    adminPanel.webview.onDidReceiveMessage(handleAdminMessage);
     adminPanel.onDidDispose(() => {
       adminPanel = undefined;
     });
@@ -651,13 +875,7 @@ async function openAdminDashboard() {
     adminPanel.reveal();
   }
 
-  try {
-    const data = await getAdminDashboardData(extensionContext);
-    adminPanel.webview.html = adminDashboardHtml(data, null);
-  } catch (error) {
-    adminPanel.webview.html = adminDashboardHtml(null, error);
-    vscode.window.showErrorMessage(`Unable to open RTK admin dashboard: ${error.message}`);
-  }
+  await refreshAdminDashboard();
 }
 
 let extensionContext;

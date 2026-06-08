@@ -26,6 +26,10 @@ Set these values in `.env`:
 - `MICROSOFT_CLIENT_ID`: app/client ID used for Microsoft identity validation.
 - `APP_SECRET_KEY`: backend JWT signing secret.
 - `COMMAND_HASH_SECRET`: secret used to hash command names before storage.
+- `SEED_SUPER_ADMIN_EMAIL`: bootstrap Super Admin email. Defaults to `rtk@hazentech.com`.
+- `SEED_SUPER_ADMIN_NAME`: bootstrap Super Admin display name.
+- `SEED_SUPER_ADMIN_PASSWORD`: bootstrap Super Admin password. Defaults to `Admin@123456`.
+- `SEED_ORGANIZATION_NAME`: bootstrap organization name.
 
 Run migrations:
 
@@ -47,9 +51,33 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 The VS Code extension never connects to PostgreSQL directly.
 
-## First-Time Super Admin Setup
+## Bootstrap Super Admin
 
-Before any Microsoft user can log in through the extension, create the initial Super Admin. This endpoint can only be used while no active Super Admin exists.
+On backend startup, RTK automatically ensures a bootstrap Super Admin user exists:
+
+```text
+Email: rtk@hazentech.com
+Password: Admin@123456
+```
+
+The seeded user is attached to the organization whose tenant is `MICROSOFT_TENANT_ID`. If no active Super Admin exists, this user is assigned `SUPER_ADMIN`. If another active Super Admin already exists, the user is still kept as an active organization member but is not promoted in a way that violates the one-active-Super-Admin rule.
+
+To log in as this seeded Super Admin, use the browser dashboard or call `POST /api/auth/login` with the seeded email and password. The backend hashes the password in PostgreSQL; the plaintext password is only read from configuration at startup.
+
+You can override the seeded account in `.env`:
+
+```text
+SEED_SUPER_ADMIN_EMAIL=rtk@hazentech.com
+SEED_SUPER_ADMIN_NAME=RTK Bootstrap Super Admin
+SEED_SUPER_ADMIN_PASSWORD=change-this-password
+SEED_ORGANIZATION_NAME=HazenTech
+```
+
+For production, change `SEED_SUPER_ADMIN_PASSWORD` before first startup and rotate it if the default was ever used.
+
+## Manual First-Time Super Admin Setup
+
+If you do not want to rely on the startup seed, you can still create the initial Super Admin manually. This endpoint can only be used while no active Super Admin exists.
 
 ```powershell
 $body = @{
@@ -80,7 +108,24 @@ After this, sign in from the VS Code extension using the same Microsoft account.
 
 ## Useful Admin APIs
 
-Use a bearer token returned by the extension login flow or `/api/auth/microsoft/verify`.
+Use a bearer token returned by `/api/auth/login`, the extension login flow, or `/api/auth/microsoft/verify`.
+
+Email/password login:
+
+```powershell
+$body = @{
+  email = "rtk@hazentech.com"
+  password = "Admin@123456"
+} | ConvertTo-Json
+
+$login = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8000/api/auth/login `
+  -ContentType "application/json" `
+  -Body $body
+
+$headers = @{ Authorization = "Bearer $($login.access_token)" }
+```
 
 ```powershell
 $headers = @{ Authorization = "Bearer YOUR_APP_SESSION_TOKEN" }
