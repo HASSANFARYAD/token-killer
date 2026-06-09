@@ -2,13 +2,13 @@
   "name": "savytox",
   "displayName": "SavytoX",
   "description": "Shows SavytoX token savings for the current agent chat session in the VS Code status bar.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "rtk",
   "scripts": {
     "test": "node --test",
     "package": "vsce package --allow-missing-repository",
     "publish:dry-run": "vsce package --allow-missing-repository",
-    "install:local": "code --install-extension savytox-0.1.0.vsix --force"
+    "install:local": "code --install-extension savytox-0.1.1.vsix --force"
   },
   "devDependencies": {
     "@vscode/vsce": "^3.6.0"
