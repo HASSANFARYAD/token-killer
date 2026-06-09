@@ -1,13 +1,13 @@
 {
-  "name": "rtk-token-savings",
-  "displayName": "RTK Token Savings",
-  "description": "Shows RTK token savings for the current agent chat session in the VS Code status bar.",
+  "name": "savytox",
+  "displayName": "SavytoX",
+  "description": "Shows SavytoX token savings for the current agent chat session in the VS Code status bar.",
   "version": "0.1.0",
   "publisher": "rtk",
   "scripts": {
     "package": "vsce package --allow-missing-repository",
     "publish:dry-run": "vsce package --allow-missing-repository",
-    "install:local": "code --install-extension rtk-token-savings-0.1.0.vsix --force"
+    "install:local": "code --install-extension savytox-0.1.0.vsix --force"
   },
   "devDependencies": {
     "@vscode/vsce": "^3.6.0"
@@ -89,7 +89,7 @@
       }
     ],
     "configuration": {
-      "title": "RTK Token Savings",
+      "title": "SavytoX",
       "properties": {
         "rtk.command": {
           "type": "string",
@@ -98,7 +98,7 @@
         },
         "rtk.apiBaseUrl": {
           "type": "string",
-          "default": "",
+          "default": "https://syntellio.hazentech.dev:9006/",
           "description": "Backend API base URL used for Microsoft login and secure RTK usage sync."
         },
         "rtk.authRequired": {

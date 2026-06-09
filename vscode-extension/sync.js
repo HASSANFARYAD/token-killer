@@ -181,7 +181,7 @@ async function ensureInstall(context) {
   let installId = context.globalState.get(INSTALL_ID_STATE);
   if (installId) return installId;
 
-  const extension = vscode.extensions.getExtension('rtk.rtk-token-savings');
+  const extension = vscode.extensions.getExtension('rtk.savytox');
   const body = await request(context, '/api/extension/installs', {
     method: 'POST',
     body: JSON.stringify({
