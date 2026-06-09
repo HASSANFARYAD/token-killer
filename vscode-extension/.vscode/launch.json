@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run RTK Token Savings",
+      "name": "Run Savytox Token Savings",
       "type": "extensionHost",
       "request": "launch",
       "args": [

@@ -212,19 +212,29 @@ async function refreshStatus() {
 }
 
 async function maybeSyncSnapshot(snapshot, force = false) {
-  if (syncInFlight) return;
+  if (syncInFlight) return false;
   const interval = config().get('syncIntervalMs', 30000);
   const now = Date.now();
-  if (!force && now - lastSyncAt < interval) return;
+  if (!force && now - lastSyncAt < interval) return true;
   syncInFlight = true;
   try {
     await syncSnapshot(extensionContext, snapshot, workspaceCwd());
     lastSyncAt = now;
+    return true;
   } catch (error) {
     lastError = error;
+    return false;
   } finally {
     syncInFlight = false;
   }
+}
+
+function syncErrorMessage(error) {
+  const message = error?.message || String(error);
+  if (message === 'fetch failed') {
+    return `Backend request failed. Check rtk.apiBaseUrl (${config().get('apiBaseUrl', '')}) and your network connection.`;
+  }
+  return message;
 }
 
 function startTimer(context) {
@@ -292,17 +302,18 @@ async function enableAutoWrap() {
   }
 }
 
-async function maybePromptAutoWrap(context) {
+async function maybeInstallAutoWrap(context) {
   if (!config().get('autoWrapTerminals', true)) return;
-  if (context.globalState.get('autoWrapPrompted')) return;
-  await context.globalState.update('autoWrapPrompted', true);
+  if (context.globalState.get('autoWrapInstalled')) return;
 
-  const choice = await vscode.window.showInformationMessage(
-    'Enable RTK automatic wrapping for noisy terminal commands like git, rg, npm, pytest, ls, find, and cat?',
-    'Enable',
-    'Not now'
-  );
-  if (choice === 'Enable') await enableAutoWrap();
+  try {
+    const output = await installShellHook();
+    await context.globalState.update('autoWrapInstalled', true);
+    await refreshStatus();
+    vscode.window.showInformationMessage(`RTK automatic terminal wrapping enabled. Restart terminals to use it. ${output}`);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Unable to enable RTK automatic terminal wrapping: ${error.message}`);
+  }
 }
 
 async function startAgentTerminal() {
@@ -881,22 +892,35 @@ async function openAdminDashboard() {
 let extensionContext;
 
 async function syncUsageNow() {
-  if (!(await ensureAuthenticated(extensionContext, true))) return;
-  if (!lastSnapshot) {
-    await refreshStatus();
-  }
-  if (lastSnapshot) {
-    await maybeSyncSnapshot(lastSnapshot, true);
-    vscode.window.showInformationMessage('RTK usage sync completed.');
+  try {
+    if (!(await ensureAuthenticated(extensionContext, true))) return;
+    if (!lastSnapshot) {
+      await refreshStatus();
+    }
+    if (lastSnapshot) {
+      if (await maybeSyncSnapshot(lastSnapshot, true)) {
+        vscode.window.showInformationMessage('RTK usage sync completed.');
+      } else {
+        vscode.window.showErrorMessage(`Unable to sync RTK usage: ${syncErrorMessage(lastError)}`);
+      }
+    }
+  } catch (error) {
+    lastError = error;
+    vscode.window.showErrorMessage(`Unable to sync RTK usage: ${syncErrorMessage(error)}`);
   }
 }
 
 async function importUsageNow() {
-  if (!(await ensureAuthenticated(extensionContext, true))) return;
-  if (!lastSnapshot) {
-    await refreshStatus();
+  try {
+    if (!(await ensureAuthenticated(extensionContext, true))) return;
+    if (!lastSnapshot) {
+      await refreshStatus();
+    }
+    await importExistingHistory(extensionContext, lastSnapshot, workspaceCwd());
+  } catch (error) {
+    lastError = error;
+    vscode.window.showErrorMessage(`Unable to import RTK usage: ${syncErrorMessage(error)}`);
   }
-  await importExistingHistory(extensionContext, lastSnapshot, workspaceCwd());
 }
 
 async function activate(context) {
@@ -933,10 +957,12 @@ async function activate(context) {
   });
 
   await contextStateSet();
-  await ensureAuthenticated(context, false);
   startTimer(context);
   await refreshStatus();
-  await maybePromptAutoWrap(context);
+  ensureAuthenticated(context, false).catch((error) => {
+    lastError = error;
+  });
+  await maybeInstallAutoWrap(context);
 }
 
 function deactivate() {
