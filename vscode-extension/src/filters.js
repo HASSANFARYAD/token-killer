@@ -209,10 +209,34 @@ function compactLs(output, config) {
   const exts = new Map();
   const dateRe = /\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+(?:\d{4}|\d{2}:\d{2})\s+/;
   const winDirRe = /^\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\s+(AM|PM)\s+(?:(<DIR>)|([\d,]+))\s+(.+)$/i;
+  const powershellRe = /^([d-][a-z-]{5})\s+\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s+(?:AM|PM)\s+(?:(\d+)\s+)?(.+)$/i;
 
   for (const raw of lines) {
     const line = normalizeLine(raw);
     if (!line || line.startsWith('total ')) continue;
+    if (
+      line.startsWith('Directory:') ||
+      line.startsWith('Mode ') ||
+      /^-+\s+-+\s+-+\s+-+/.test(line)
+    ) {
+      continue;
+    }
+
+    const powershell = line.match(powershellRe);
+    if (powershell) {
+      const isDir = powershell[1][0].toLowerCase() === 'd';
+      const size = powershell[2] ? Number(powershell[2]) : 0;
+      const name = powershell[3].trim();
+      if (!name || name === '.' || name === '..' || NOISE_DIRS.has(name)) continue;
+      if (isDir) dirs.push(`${name}/`);
+      else {
+        files.push(`${name} ${humanSize(size)}`);
+        const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : 'no ext';
+        exts.set(ext, (exts.get(ext) || 0) + 1);
+      }
+      continue;
+    }
+
     const win = line.match(winDirRe);
     if (win) {
       const isDir = Boolean(win[2]);
@@ -431,9 +455,9 @@ export function classify(command, args = []) {
   if (base === 'git' && ['add', 'commit', 'push', 'pull', 'fetch'].includes(args[0])) {
     return (output, config) => gitOk(output, config, args[0]);
   }
-  if (base === 'ls' || base === 'dir') return compactLs;
+  if (base === 'ls' || base === 'dir' || base === 'get-childitem' || base === 'gci') return compactLs;
   if (base === 'find') return findOutput;
-  if (base === 'read' || base === 'cat') return readOutput;
+  if (base === 'read' || base === 'cat' || base === 'get-content' || base === 'gc' || base === 'type') return readOutput;
   if (base === 'rg' || base === 'grep') return searchMatches;
   if (base === 'pytest') return testOutput;
   if (base === 'npm' && args[0] === 'test') return testOutput;

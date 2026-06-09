@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "rtk",
   "scripts": {
+    "test": "node --test",
     "package": "vsce package --allow-missing-repository",
     "publish:dry-run": "vsce package --allow-missing-repository",
     "install:local": "code --install-extension savytox-0.1.0.vsix --force"
