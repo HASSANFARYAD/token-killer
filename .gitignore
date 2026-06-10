@@ -5,3 +5,7 @@ backend/.env.docker
 node_modules/
 *.vsix
 admin-dashboard/dist/
+
+.ruff_cache
+.pytest_cache
+.venv
