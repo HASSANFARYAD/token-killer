@@ -25,6 +25,14 @@ test('regular commands keep the executable runner path', () => {
   assert.equal(resolved.options.shell, process.platform === 'win32');
 });
 
+test('regular commands preserve dot path arguments', () => {
+  const resolved = commandForTest('git', ['add', '.']);
+
+  assert.equal(resolved.command, 'git');
+  assert.deepEqual(resolved.args, ['add', '.']);
+  assert.equal(resolved.options.shell, process.platform === 'win32');
+});
+
 test('runs PowerShell cmdlets on Windows', { skip: process.platform !== 'win32' }, () => {
   const result = runCommand('Get-Content', ['-Raw', 'README.md']);
 

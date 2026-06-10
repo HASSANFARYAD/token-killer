@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { filterOutput } from './filters.js';
 import { runAgent } from './agent.js';
 import { installCodexInstructions, installHook, uninstallCodexInstructions, uninstallHook } from './hooks.js';
@@ -7,6 +8,8 @@ import { runCommand } from './runner.js';
 import { runInternal } from './internal.js';
 import { byteLength, lineCount } from './utils.js';
 import { maybeStripAnsi } from './ansi.js';
+
+const VERSION = '0.1.1';
 
 function parse(argv) {
   const flags = {
@@ -79,6 +82,8 @@ Usage:
   rtk-node init -g --codex
   rtk-node init -g --uninstall
   rtk-node uninstall
+  rtk-node uninstall-hooks
+  rtk-node doctor
   rtk-node gain
   rtk-node session [--json]
   rtk-node status [--json]
@@ -92,6 +97,28 @@ Flags:
   -u, --ultra-compact
                     Use more aggressive truncation and shorter summaries
 `;
+}
+
+function doctorReport() {
+  const lines = [
+    'RTK doctor',
+    `version: ${VERSION}`,
+    `platform: ${process.platform}`,
+    `node: ${process.version}`,
+    `cwd: ${process.cwd()}`,
+    `config: ${configPath()}`,
+    `RTK_NODE_ACTIVE: ${process.env.RTK_NODE_ACTIVE ? 'set' : 'not set'}`,
+    `RTK_NODE_HOOK: ${process.env.RTK_NODE_HOOK ? 'set' : 'not set'}`,
+    `PATH: ${process.env.PATH || process.env.Path || ''}`
+  ];
+
+  const lookup = process.platform === 'win32' ? 'where.exe' : 'which';
+  for (const command of ['git', 'node', process.platform === 'win32' ? 'python' : 'python3']) {
+    const result = spawnSync(lookup, [command], { encoding: 'utf8', shell: false });
+    lines.push(`${command}: ${result.status === 0 ? result.stdout.trim().split(/\r?\n/)[0] : 'not found'}`);
+  }
+
+  return lines.join('\n');
 }
 
 function metadata({ command, args, result, original, compressed, truncated }) {
@@ -152,6 +179,11 @@ export async function main(argv) {
     return;
   }
 
+  if (subcommand === '--version' || subcommand === 'version') {
+    console.log(`rtk-node ${VERSION}`);
+    return;
+  }
+
   if (subcommand === 'init') {
     if (flags.uninstall) {
       const hook = uninstallHook({});
@@ -184,9 +216,14 @@ export async function main(argv) {
     return;
   }
 
-  if (subcommand === 'uninstall') {
+  if (subcommand === 'uninstall' || subcommand === 'uninstall-hooks') {
     const result = uninstallHook({});
     console.log(result.changed ? `Removed rtk-node hook from ${result.profile}` : `No rtk-node hook found in ${result.profile}`);
+    return;
+  }
+
+  if (subcommand === 'doctor') {
+    console.log(doctorReport());
     return;
   }
 
@@ -245,6 +282,16 @@ export async function main(argv) {
 
   if (result.error) {
     console.error(`[rtk-node] failed to execute ${command}: ${result.error.message}`);
+    process.exit(result.status);
+  }
+
+  if (result.status !== 0) {
+    process.stdout.write(maybeStripAnsi(rawOutput, flags.colors && config.colors));
+    recordRun(commandName, rawOutput, rawOutput, {
+      exitCode: result.status,
+      durationMs: result.durationMs,
+      truncated: false
+    });
     process.exit(result.status);
   }
 

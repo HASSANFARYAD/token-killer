@@ -85,26 +85,26 @@ function rtkEnv() {
 function commandCandidates() {
   const configuredCommand = config().get('command', '');
   const candidates = [];
-  const push = (command, argsPrefix = []) => {
+  const push = (command, argsPrefix = [], label = command) => {
     if (!candidates.some((candidate) => candidate.command === command && candidate.argsPrefix.join('\0') === argsPrefix.join('\0'))) {
-      candidates.push({ command, argsPrefix });
+      candidates.push({ command, argsPrefix, label });
     }
   };
 
-  if (configuredCommand) push(configuredCommand);
-
   const bundledCli = path.join(__dirname, 'bin', 'rtk-node.js');
-  if (fs.existsSync(bundledCli)) push(nodeCommand(), [bundledCli]);
+  if (fs.existsSync(bundledCli)) push(nodeCommand(), [bundledCli], 'bundled RTK CLI');
 
-  if (process.platform === 'win32') {
-    push('rtk-node.cmd');
-    push(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'rtk-node.cmd'));
-  } else {
-    push('rtk-node');
-  }
+  if (configuredCommand) push(configuredCommand, [], 'configured rtk.command');
 
   const localCli = path.join(workspaceCwd(), 'bin', 'rtk-node.js');
-  if (fs.existsSync(localCli)) push(nodeCommand(), [localCli]);
+  if (fs.existsSync(localCli)) push(nodeCommand(), [localCli], 'workspace RTK CLI');
+
+  if (process.platform === 'win32') {
+    push('rtk-node.cmd', [], 'global rtk-node.cmd');
+    push(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'rtk-node.cmd'), [], 'global npm rtk-node.cmd');
+  } else {
+    push('rtk-node', [], 'global rtk-node');
+  }
 
   return candidates;
 }
@@ -161,13 +161,54 @@ function execRtkCandidate(candidate) {
   });
 }
 
+async function runLocalAgentStatus() {
+  if (typeof fetch !== 'function' || typeof AbortController !== 'function') return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 500);
+  try {
+    const response = await fetch((process.env.RTK_AGENT_URL || 'http://127.0.0.1:17687') + '/status', {
+      method: 'GET',
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    const status = await response.json();
+    if (status?.session && status?.total) return status;
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function validateRtkCandidate(candidate) {
+  return new Promise((resolve, reject) => {
+    execFile(candidate.command, [...candidate.argsPrefix, '--version'], {
+      cwd: workspaceCwd(),
+      env: rtkEnv(),
+      windowsHide: true,
+      timeout: 5000
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr?.trim() || error.message));
+        return;
+      }
+      resolve((stdout || '').trim());
+    });
+  });
+}
+
 async function runRtkStatus() {
+  const agentStatus = await runLocalAgentStatus();
+  if (agentStatus) return agentStatus;
+
   const errors = [];
   for (const candidate of commandCandidates()) {
     try {
+      await validateRtkCandidate(candidate);
       return await execRtkCandidate(candidate);
     } catch (error) {
-      errors.push(`${candidate.command}: ${error.message}`);
+      errors.push(`${candidate.label}: ${error.message}`);
     }
   }
   throw new Error(errors.join('\n'));
@@ -277,7 +318,61 @@ function installShellHook() {
     }
 
     const rtkCommand = bundledCliCommand();
-    execFile(nodeCommand(), [bundledCli, 'init', '-g', '--hook-only', '--command', rtkCommand], {
+    execFile(nodeCommand(), [bundledCli, '--version'], {
+      cwd: workspaceCwd(),
+      env: rtkEnv(),
+      windowsHide: true,
+      timeout: 5000
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`Bundled RTK CLI failed validation: ${stderr?.trim() || error.message}`));
+        return;
+      }
+      execFile(nodeCommand(), [bundledCli, 'init', '-g', '--hook-only', '--command', rtkCommand], {
+        cwd: workspaceCwd(),
+        env: rtkEnv(),
+        windowsHide: true,
+        timeout: 5000
+      }, (installError, installStdout, installStderr) => {
+        if (installError) {
+          reject(new Error(installStderr?.trim() || installError.message));
+          return;
+        }
+        resolve(installStdout.trim() || stdout.trim());
+      });
+    });
+  });
+}
+
+async function enableAutoWrap() {
+  if (!config().get('autoWrapTerminals', false)) {
+    const choice = await vscode.window.showWarningMessage(
+      'RTK automatic terminal wrapping modifies your shell profile so commands such as git and npm run through rtk-node in new terminals. Enable this setting and install the hook?',
+      'Enable and Install',
+      'Cancel'
+    );
+    if (choice !== 'Enable and Install') return;
+    await config().update('autoWrapTerminals', true, vscode.ConfigurationTarget.Global);
+  }
+
+  try {
+    const output = await installShellHook();
+    await refreshStatus();
+    vscode.window.showInformationMessage(`RTK automatic terminal wrapping enabled. Restart terminals to use it. ${output}`);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Unable to enable RTK automatic terminal wrapping: ${error.message}`);
+  }
+}
+
+function uninstallShellHook() {
+  return new Promise((resolve, reject) => {
+    const bundledCli = bundledCliPath();
+    if (!fs.existsSync(bundledCli)) {
+      reject(new Error('Bundled RTK CLI was not found in the extension.'));
+      return;
+    }
+
+    execFile(nodeCommand(), [bundledCli, 'uninstall-hooks'], {
       cwd: workspaceCwd(),
       env: rtkEnv(),
       windowsHide: true,
@@ -292,27 +387,13 @@ function installShellHook() {
   });
 }
 
-async function enableAutoWrap() {
+async function disableAutoWrap() {
   try {
-    const output = await installShellHook();
-    await refreshStatus();
-    vscode.window.showInformationMessage(`RTK automatic terminal wrapping enabled. Restart terminals to use it. ${output}`);
+    await config().update('autoWrapTerminals', false, vscode.ConfigurationTarget.Global);
+    const output = await uninstallShellHook();
+    vscode.window.showInformationMessage(`RTK automatic terminal wrapping disabled. Restart terminals to clear loaded shell functions. ${output}`);
   } catch (error) {
-    vscode.window.showErrorMessage(`Unable to enable RTK automatic terminal wrapping: ${error.message}`);
-  }
-}
-
-async function maybeInstallAutoWrap(context) {
-  if (!config().get('autoWrapTerminals', true)) return;
-  if (context.globalState.get('autoWrapInstalled')) return;
-
-  try {
-    const output = await installShellHook();
-    await context.globalState.update('autoWrapInstalled', true);
-    await refreshStatus();
-    vscode.window.showInformationMessage(`RTK automatic terminal wrapping enabled. Restart terminals to use it. ${output}`);
-  } catch (error) {
-    vscode.window.showErrorMessage(`Unable to enable RTK automatic terminal wrapping: ${error.message}`);
+    vscode.window.showErrorMessage(`Unable to disable RTK automatic terminal wrapping: ${error.message}`);
   }
 }
 
@@ -342,6 +423,62 @@ async function startAgentTerminal() {
   terminal.show();
   terminal.sendText(`${bundledCliCommand()} agent ${command}`);
   await refreshStatus();
+}
+
+async function runDiagnostics() {
+  const lines = [];
+  const add = (status, label, detail = '') => {
+    lines.push(`${status.padEnd(7)} ${label}${detail ? `: ${detail}` : ''}`);
+  };
+  const extension = vscode.extensions.getExtension('rtk.savytox');
+
+  add('INFO', 'Extension version', extension?.packageJSON?.version || 'unknown');
+  add('INFO', 'VS Code version', vscode.version);
+  add('INFO', 'OS', `${process.platform} ${os.release()}`);
+  add('INFO', 'Workspace', workspaceCwd());
+  add('INFO', 'rtk.autoWrapTerminals', String(config().get('autoWrapTerminals', false)));
+  add('INFO', 'rtk.command', config().get('command', '') || '(not configured)');
+  add('INFO', 'Bundled CLI path', bundledCliPath());
+  add(fs.existsSync(bundledCliPath()) ? 'OK' : 'BROKEN', 'Bundled CLI exists', fs.existsSync(bundledCliPath()) ? 'yes' : 'no');
+
+  for (const candidate of commandCandidates()) {
+    try {
+      const version = await validateRtkCandidate(candidate);
+      add('OK', candidate.label, version || 'validated');
+    } catch (error) {
+      add('BROKEN', candidate.label, error.message);
+    }
+  }
+
+  const shellHookEnabled = config().get('autoWrapTerminals', false);
+  add(shellHookEnabled ? 'WARN' : 'OK', 'Would git add . be wrapped?', shellHookEnabled ? 'yes, in new terminals with installed hooks' : 'no');
+
+  const checkCommand = (command) => new Promise((resolve) => {
+    const lookup = process.platform === 'win32' ? 'where.exe' : 'which';
+    execFile(lookup, [command], { windowsHide: true, timeout: 5000 }, (error, stdout, stderr) => {
+      resolve(error ? { ok: false, detail: stderr?.trim() || error.message } : { ok: true, detail: stdout.trim().split(/\r?\n/)[0] });
+    });
+  });
+
+  for (const command of ['git', 'node', process.platform === 'win32' ? 'python' : 'python3']) {
+    const result = await checkCommand(command);
+    add(result.ok ? 'OK' : 'WARN', `${command} path`, result.detail);
+  }
+
+  const document = await vscode.workspace.openTextDocument({
+    language: 'plaintext',
+    content: [
+      'RTK Diagnostics',
+      '',
+      ...lines,
+      '',
+      'Suggested fixes:',
+      '- Keep rtk.autoWrapTerminals disabled unless the user explicitly wants shell hooks.',
+      '- Use RTK: Disable Automatic Terminal Wrapping to remove RTK-managed hook blocks.',
+      '- Prefer the bundled CLI; repair or remove broken global rtk-node shims if diagnostics mark them broken.'
+    ].join('\n')
+  });
+  await vscode.window.showTextDocument(document);
 }
 
 function escapeHtml(value) {
@@ -942,6 +1079,8 @@ async function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('rtk.newSession', newSession));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.useWorkspaceSession', resetToWorkspaceSession));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.enableAutoWrap', enableAutoWrap));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.disableAutoWrap', disableAutoWrap));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.diagnostics', runDiagnostics));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.startAgentTerminal', startAgentTerminal));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(resetToWorkspaceSession));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
@@ -962,7 +1101,6 @@ async function activate(context) {
   ensureAuthenticated(context, false).catch((error) => {
     lastError = error;
   });
-  await maybeInstallAutoWrap(context);
 }
 
 function deactivate() {

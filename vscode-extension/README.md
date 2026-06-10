@@ -14,6 +14,8 @@ If `rtk.command` is empty, the extension uses the bundled RTK CLI. You can point
 
 It also provides `RTK: Start Agent Terminal`, which opens a VS Code terminal through the bundled `rtk-node agent <command>` wrapper. Commands run through `rtk-node` in that terminal are counted against the active VS Code session.
 
+Installing the extension does not modify normal VS Code terminals, shell profiles, Git configuration, or `PATH`. Normal terminal commands such as `git add .`, `npm install`, and `node -v` continue to run directly through the user's shell. Automatic shell wrapping is off by default and is only installed after explicitly running `RTK: Enable Automatic Terminal Wrapping` and confirming the prompt.
+
 The extension does not connect to PostgreSQL. Organization auth, RBAC, Azure AD settings, and usage persistence all go through the backend API.
 
 ## Run Against Your Backend
@@ -241,11 +243,13 @@ The extension includes the RTK CLI under `bin` and `src`. Use `rtk.command` only
 - `RTK: Start New Session`
 - `RTK: Use Current Workspace Session`
 - `RTK: Enable Automatic Terminal Wrapping`
+- `RTK: Disable Automatic Terminal Wrapping`
+- `RTK: Run Diagnostics`
 - `RTK: Start Agent Terminal`
 
 ## Settings
 
-- `rtk.command`: command used to run RTK, default `rtk-node`.
+- `rtk.command`: optional external RTK command. Leave empty to use the bundled CLI.
 - `rtk.apiBaseUrl`: backend API base URL, for example `https://api.example.com`.
 - `rtk.authRequired`: prompts for Microsoft login before organization sync and protected dashboard access.
 - `rtk.refreshIntervalMs`: status refresh interval, default `3000`.
@@ -253,5 +257,24 @@ The extension includes the RTK CLI under `bin` and `src`. Use `rtk.command` only
 - `rtk.showTotalWhenNoSession`: show lifetime totals until the session has runs.
 - `rtk.syncEnabled`: sends usage snapshots and events to the configured backend after login.
 - `rtk.syncIntervalMs`: minimum interval for backend usage sync attempts.
-- `rtk.autoWrapTerminals`: prompt once to enable shell hooks for wrapped terminal commands.
+- `rtk.autoWrapTerminals`: allows `RTK: Enable Automatic Terminal Wrapping` to install shell hooks. Default `false`; extension installation and startup do not install hooks.
 - `rtk.followWorkspacePath`: keeps the displayed session aligned with the current workspace path.
+
+## Terminal Safety
+
+Default behavior:
+
+- Status bar polling runs `rtk-node status --json` in the extension host only.
+- `RTK: Start Agent Terminal` creates a dedicated RTK terminal and sets only `RTK_SESSION_ID` and `RTK_SESSION_LABEL` in that terminal.
+- Normal terminals are not intercepted, and no shell profile is edited on extension activation.
+
+Optional automatic wrapping:
+
+- `RTK: Enable Automatic Terminal Wrapping` installs shell functions in the user's shell profile after confirmation.
+- New terminals started after that hook is installed route selected commands such as `git`, `npm`, and `rg` through `rtk-node`.
+- The generated hooks validate RTK before wrapping and fall back to the native command if RTK is unavailable.
+- Disable wrapping with `RTK: Disable Automatic Terminal Wrapping` or by running `rtk-node uninstall-hooks` in the affected shell.
+
+## Diagnostics
+
+Run `RTK: Run Diagnostics` to inspect extension version, VS Code version, OS, configured RTK command, bundled CLI health, global `rtk-node` health, auto-wrap state, Git path, Node path, Python path, and whether `git add .` would be wrapped in new terminals.

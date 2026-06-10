@@ -36,6 +36,8 @@
     "onCommand:rtk.importUsage",
     "onCommand:rtk.startAgentTerminal",
     "onCommand:rtk.enableAutoWrap",
+    "onCommand:rtk.disableAutoWrap",
+    "onCommand:rtk.diagnostics",
     "onCommand:rtk.useWorkspaceSession",
     "onCommand:rtk.newSession",
     "onCommand:rtk.openDashboard",
@@ -83,6 +85,14 @@
       {
         "command": "rtk.enableAutoWrap",
         "title": "RTK: Enable Automatic Terminal Wrapping"
+      },
+      {
+        "command": "rtk.disableAutoWrap",
+        "title": "RTK: Disable Automatic Terminal Wrapping"
+      },
+      {
+        "command": "rtk.diagnostics",
+        "title": "RTK: Run Diagnostics"
       },
       {
         "command": "rtk.startAgentTerminal",
@@ -136,8 +146,8 @@
         },
         "rtk.autoWrapTerminals": {
           "type": "boolean",
-          "default": true,
-          "description": "Prompt once to enable shell hooks that automatically wrap noisy terminal commands through bundled RTK."
+          "default": false,
+          "description": "Allow RTK: Enable Automatic Terminal Wrapping to install shell hooks. Disabled by default so normal terminals are unaffected after extension installation."
         },
         "rtk.followWorkspacePath": {
           "type": "boolean",

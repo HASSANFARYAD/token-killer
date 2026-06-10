@@ -35,7 +35,11 @@ function shellCommand(command) {
   return command || 'rtk-node';
 }
 
-function hookBlock(shell, { command } = {}) {
+function posixCommandCheck(command) {
+  return `${command} --version >/dev/null 2>&1`;
+}
+
+export function hookBlock(shell, { command } = {}) {
   const rtkCommand = shellCommand(command);
 
   if (shell === 'fish') {
@@ -46,8 +50,10 @@ function hookBlock(shell, { command } = {}) {
         `function ${cmd}`,
         '  if test -n "$RTK_NODE_ACTIVE"',
         `    command ${cmd} $argv`,
-        '  else',
+        `  else if ${rtkCommand} --version >/dev/null 2>&1`,
         `    ${rtkCommand} ${cmd} $argv`,
+        '  else',
+        `    command ${cmd} $argv`,
         '  end',
         'end'
       ].join('\n')),
@@ -71,7 +77,18 @@ function hookBlock(shell, { command } = {}) {
         '  if ($env:RTK_NODE_ACTIVE) {',
         `    & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
         '  } else {',
-        `    & ${rtkCommand} ${cmd} @args`,
+        '    $rtkAvailable = $false',
+        '    try {',
+        `      & ${rtkCommand} --version *> $null`,
+        '      $rtkAvailable = ($LASTEXITCODE -eq 0)',
+        '    } catch {',
+        '      $rtkAvailable = $false',
+        '    }',
+        '    if ($rtkAvailable) {',
+        `      & ${rtkCommand} ${cmd} @args`,
+        '    } else {',
+        `      & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
+        '    }',
         '  }',
         '}'
       ].join('\n')),
@@ -86,8 +103,10 @@ function hookBlock(shell, { command } = {}) {
       `${cmd}() {`,
       '  if [ -n "$RTK_NODE_ACTIVE" ]; then',
       `    command ${cmd} "$@"`,
-      '  else',
+      `  elif ${posixCommandCheck(rtkCommand)}; then`,
       `    ${rtkCommand} ${cmd} "$@"`,
+      '  else',
+      `    command ${cmd} "$@"`,
       '  fi',
       '}'
     ].join('\n')),

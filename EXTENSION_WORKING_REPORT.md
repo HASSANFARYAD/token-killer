@@ -238,7 +238,7 @@ The extension stores the backend app token in VS Code SecretStorage. It also sto
 | `rtk.showTotalWhenNoSession` | `true` | Shows lifetime totals when the current session has no runs. |
 | `rtk.syncEnabled` | `true` | Enables backend usage sync after login. |
 | `rtk.syncIntervalMs` | `30000` | Minimum interval between automatic sync attempts. |
-| `rtk.autoWrapTerminals` | `true` | Prompts once to enable shell hooks. |
+| `rtk.autoWrapTerminals` | `false` | Allows `RTK: Enable Automatic Terminal Wrapping` to install shell hooks after explicit confirmation. Extension startup does not install hooks. |
 | `rtk.followWorkspacePath` | `true` | Keeps the active session aligned with the current workspace path. |
 
 ## Developer Run and Test Commands
