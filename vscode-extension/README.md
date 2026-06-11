@@ -14,7 +14,7 @@ If `rtk.command` is empty, the extension uses the bundled RTK CLI. You can point
 
 It also provides `RTK: Start Agent Terminal`, which opens a VS Code terminal through the bundled `rtk-node agent <command>` wrapper. Commands run through `rtk-node` in that terminal are counted against the active VS Code session.
 
-On install/startup, the extension installs shell hooks when `rtk.autoWrapTerminals` is enabled. It is enabled by default for new installs so supported commands such as `git`, `npm`, `rg`, `find`, and `cat` route through RTK-Node automatically where the user's shell supports hooks. Windows PowerShell, Linux bash/zsh/fish, and macOS zsh/bash/fish are supported. Codex/VS Code zsh shells also receive a scoped non-interactive loader. The generated hooks validate RTK first and fall back to the native command if RTK is unavailable. Set `RTK_NODE_DISABLE=1` for one command when exact raw output is required.
+On install/startup, the extension installs shell hooks only when `rtk.autoWrapTerminals` is enabled. It is disabled by default for new installs, so normal terminals keep native command behavior until you opt in. When enabled, supported commands such as `git`, `npm`, `rg`, `find`, and `cat` route through RTK-Node automatically where the user's shell supports hooks. Windows PowerShell, Linux bash/zsh/fish, and macOS zsh/bash/fish are supported. Codex/VS Code zsh shells also receive a scoped non-interactive loader. The generated hooks validate RTK first and fall back to the native command if RTK is unavailable. Set `RTK_NODE_DISABLE=1` for one command when exact raw output is required.
 
 The extension does not connect to PostgreSQL. Organization auth, RBAC, Azure AD settings, and usage persistence all go through the backend API.
 
@@ -35,9 +35,10 @@ Configure the extension settings. For local development, this workspace can use:
 
 ```json
 {
-  "rtk.apiBaseUrl": "http://localhost:8000",
+  "rtk.apiBaseUrl": "https://syntellio.hazentech.dev:9006",
   "rtk.authRequired": true,
-  "rtk.syncEnabled": true
+  "rtk.syncEnabled": true,
+  "rtk.autoWrapTerminals": false
 }
 ```
 
@@ -257,7 +258,7 @@ The extension includes the RTK CLI under `bin` and `src`. Use `rtk.command` only
 - `rtk.showTotalWhenNoSession`: show lifetime totals until the session has runs.
 - `rtk.syncEnabled`: sends usage snapshots and events to the configured backend after login.
 - `rtk.syncIntervalMs`: minimum interval for backend usage sync attempts.
-- `rtk.autoWrapTerminals`: automatically installs shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Default `true`; disable it to opt out and remove hooks with `RTK: Disable Automatic Terminal Wrapping`.
+- `rtk.autoWrapTerminals`: automatically installs shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Default `false`; enable it only when you want wrapped terminals, and remove hooks with `RTK: Disable Automatic Terminal Wrapping`.
 - `rtk.followWorkspacePath`: keeps the displayed session aligned with the current workspace path.
 
 ## Terminal Safety

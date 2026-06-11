@@ -25,6 +25,21 @@ function authRequired() {
   return Boolean(config().get('authRequired', false));
 }
 
+function parseResponseJson(text, url, response) {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const contentType = response.headers?.get?.('content-type') || 'unknown content type';
+    const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 160);
+    const detail = `Backend returned a non-JSON response from ${url}: HTTP ${response.status} ${response.statusText || ''} (${contentType}). ${snippet}`;
+    const parseError = new Error(detail.trim());
+    parseError.status = response.status;
+    parseError.contentType = contentType;
+    throw parseError;
+  }
+}
+
 function hashValue(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex');
 }
@@ -65,7 +80,8 @@ async function request(context, path, options = {}) {
   const token = await context.secrets.get(ACCESS_TOKEN_KEY);
   if (!token) throw new Error('RTK is not logged in.');
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const url = `${baseUrl}${path}`;
+  const response = await fetch(url, {
     ...options,
     headers: {
       'content-type': 'application/json',
@@ -74,7 +90,7 @@ async function request(context, path, options = {}) {
     }
   });
   const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
+  const body = parseResponseJson(text, url, response);
   if (!response.ok) {
     const code = body.detail || body.error || `HTTP ${response.status}`;
     const error = new Error(code);
@@ -111,13 +127,14 @@ async function loginWithMicrosoft(context) {
   const session = await vscode.authentication.getSession('microsoft', ['openid', 'profile', 'email', 'User.Read'], {
     createIfNone: true
   });
-  const response = await fetch(`${baseUrl}/api/auth/microsoft/verify`, {
+  const url = `${baseUrl}/api/auth/microsoft/verify`;
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ access_token: session.accessToken })
   });
   const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
+  const body = parseResponseJson(text, url, response);
   if (!response.ok) {
     await context.secrets.delete(ACCESS_TOKEN_KEY);
     await context.globalState.update(INSTALL_ID_STATE, undefined);

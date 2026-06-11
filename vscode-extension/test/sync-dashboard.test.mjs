@@ -157,3 +157,49 @@ test('logged-in sync sends saved-token snapshot and events for dashboard totals'
   assert.equal(eventRequest.body.events[0].saved_tokens, 160);
   assert.equal(eventRequest.body.events[0].truncated, true);
 });
+
+test('sync reports non-JSON backend responses with status and content type', async () => {
+  const settings = new Map([
+    ['apiBaseUrl', 'http://rtk.test'],
+    ['syncEnabled', true],
+    ['authRequired', true]
+  ]);
+  const { sync, syncPath } = loadSyncWithVscodeMock(settings);
+  const originalFetch = global.fetch;
+
+  global.fetch = async () => ({
+    ok: false,
+    status: 400,
+    statusText: 'Bad Request',
+    headers: {
+      get(name) {
+        return name.toLowerCase() === 'content-type' ? 'text/html' : null;
+      }
+    },
+    async text() {
+      return '<html><h1>Bad Request</h1></html>';
+    }
+  });
+
+  try {
+    await assert.rejects(
+      () => sync.syncSnapshot(makeContext(), {
+        session: {
+          id: 'html-response-session',
+          label: 'HTML Response Session',
+          runs: 1,
+          originalTokens: 10,
+          compressedTokens: 5,
+          savedTokens: 5
+        },
+        total: {
+          recentRuns: []
+        }
+      }, '/workspace'),
+      /Backend returned a non-JSON response.*HTTP 400 Bad Request.*text\/html/
+    );
+  } finally {
+    global.fetch = originalFetch;
+    delete require.cache[syncPath];
+  }
+});

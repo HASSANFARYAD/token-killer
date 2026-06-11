@@ -109,7 +109,7 @@
         },
         "rtk.apiBaseUrl": {
           "type": "string",
-          "default": "https://syntellio.hazentech.dev:9006/",
+          "default": "https://syntellio.hazentech.dev:9006",
           "description": "Backend API base URL used for Microsoft login and secure RTK usage sync."
         },
         "rtk.authRequired": {
@@ -146,8 +146,8 @@
         },
         "rtk.autoWrapTerminals": {
           "type": "boolean",
-          "default": true,
-          "description": "Automatically install shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Disable this to opt out and remove hooks with RTK: Disable Automatic Terminal Wrapping."
+          "default": false,
+          "description": "Automatically install shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Enable this to opt in, and remove hooks with RTK: Disable Automatic Terminal Wrapping."
         },
         "rtk.followWorkspacePath": {
           "type": "boolean",

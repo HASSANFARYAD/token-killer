@@ -398,7 +398,7 @@ async function disableAutoWrap() {
 }
 
 async function ensureAutoWrapInstalled() {
-  if (!config().get('autoWrapTerminals', true)) return;
+  if (!config().get('autoWrapTerminals', false)) return;
 
   try {
     await installShellHook();
@@ -446,7 +446,7 @@ async function runDiagnostics() {
   add('INFO', 'VS Code version', vscode.version);
   add('INFO', 'OS', `${process.platform} ${os.release()}`);
   add('INFO', 'Workspace', workspaceCwd());
-  add('INFO', 'rtk.autoWrapTerminals', String(config().get('autoWrapTerminals', true)));
+  add('INFO', 'rtk.autoWrapTerminals', String(config().get('autoWrapTerminals', false)));
   add('INFO', 'rtk.command', config().get('command', '') || '(not configured)');
   add('INFO', 'Bundled CLI path', bundledCliPath());
   add(fs.existsSync(bundledCliPath()) ? 'OK' : 'BROKEN', 'Bundled CLI exists', fs.existsSync(bundledCliPath()) ? 'yes' : 'no');
@@ -460,7 +460,7 @@ async function runDiagnostics() {
     }
   }
 
-  const shellHookEnabled = config().get('autoWrapTerminals', true);
+  const shellHookEnabled = config().get('autoWrapTerminals', false);
   add(shellHookEnabled ? 'WARN' : 'OK', 'Would git add . be wrapped?', shellHookEnabled ? 'yes, in new terminals with installed hooks' : 'no');
 
   const checkCommand = (command) => new Promise((resolve) => {
