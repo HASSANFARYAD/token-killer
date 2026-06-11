@@ -397,6 +397,16 @@ async function disableAutoWrap() {
   }
 }
 
+async function ensureAutoWrapInstalled() {
+  if (!config().get('autoWrapTerminals', true)) return;
+
+  try {
+    await installShellHook();
+  } catch (error) {
+    lastError = error;
+  }
+}
+
 async function startAgentTerminal() {
   const defaultCommand = config().get('defaultAgentCommand', 'codex');
   const command = await vscode.window.showInputBox({
@@ -436,7 +446,7 @@ async function runDiagnostics() {
   add('INFO', 'VS Code version', vscode.version);
   add('INFO', 'OS', `${process.platform} ${os.release()}`);
   add('INFO', 'Workspace', workspaceCwd());
-  add('INFO', 'rtk.autoWrapTerminals', String(config().get('autoWrapTerminals', false)));
+  add('INFO', 'rtk.autoWrapTerminals', String(config().get('autoWrapTerminals', true)));
   add('INFO', 'rtk.command', config().get('command', '') || '(not configured)');
   add('INFO', 'Bundled CLI path', bundledCliPath());
   add(fs.existsSync(bundledCliPath()) ? 'OK' : 'BROKEN', 'Bundled CLI exists', fs.existsSync(bundledCliPath()) ? 'yes' : 'no');
@@ -450,7 +460,7 @@ async function runDiagnostics() {
     }
   }
 
-  const shellHookEnabled = config().get('autoWrapTerminals', false);
+  const shellHookEnabled = config().get('autoWrapTerminals', true);
   add(shellHookEnabled ? 'WARN' : 'OK', 'Would git add . be wrapped?', shellHookEnabled ? 'yes, in new terminals with installed hooks' : 'no');
 
   const checkCommand = (command) => new Promise((resolve) => {
@@ -473,7 +483,7 @@ async function runDiagnostics() {
       ...lines,
       '',
       'Suggested fixes:',
-      '- Keep rtk.autoWrapTerminals disabled unless the user explicitly wants shell hooks.',
+      '- Set RTK_NODE_DISABLE=1 before a command when exact raw output is required.',
       '- Use RTK: Disable Automatic Terminal Wrapping to remove RTK-managed hook blocks.',
       '- Prefer the bundled CLI; repair or remove broken global rtk-node shims if diagnostics mark them broken.'
     ].join('\n')
@@ -1096,6 +1106,7 @@ async function activate(context) {
   });
 
   await contextStateSet();
+  await ensureAutoWrapInstalled();
   startTimer(context);
   await refreshStatus();
   ensureAuthenticated(context, false).catch((error) => {

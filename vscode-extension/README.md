@@ -14,7 +14,7 @@ If `rtk.command` is empty, the extension uses the bundled RTK CLI. You can point
 
 It also provides `RTK: Start Agent Terminal`, which opens a VS Code terminal through the bundled `rtk-node agent <command>` wrapper. Commands run through `rtk-node` in that terminal are counted against the active VS Code session.
 
-Installing the extension does not modify normal VS Code terminals, shell profiles, Git configuration, or `PATH`. Normal terminal commands such as `git add .`, `npm install`, and `node -v` continue to run directly through the user's shell. Automatic shell wrapping is off by default and is only installed after explicitly running `RTK: Enable Automatic Terminal Wrapping` and confirming the prompt.
+On install/startup, the extension installs shell hooks when `rtk.autoWrapTerminals` is enabled. It is enabled by default for new installs so supported commands such as `git`, `npm`, `rg`, `find`, and `cat` route through RTK-Node automatically where the user's shell supports hooks. Windows PowerShell, Linux bash/zsh/fish, and macOS zsh/bash/fish are supported. Codex/VS Code zsh shells also receive a scoped non-interactive loader. The generated hooks validate RTK first and fall back to the native command if RTK is unavailable. Set `RTK_NODE_DISABLE=1` for one command when exact raw output is required.
 
 The extension does not connect to PostgreSQL. Organization auth, RBAC, Azure AD settings, and usage persistence all go through the backend API.
 
@@ -257,22 +257,22 @@ The extension includes the RTK CLI under `bin` and `src`. Use `rtk.command` only
 - `rtk.showTotalWhenNoSession`: show lifetime totals until the session has runs.
 - `rtk.syncEnabled`: sends usage snapshots and events to the configured backend after login.
 - `rtk.syncIntervalMs`: minimum interval for backend usage sync attempts.
-- `rtk.autoWrapTerminals`: allows `RTK: Enable Automatic Terminal Wrapping` to install shell hooks. Default `false`; extension installation and startup do not install hooks.
+- `rtk.autoWrapTerminals`: automatically installs shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Default `true`; disable it to opt out and remove hooks with `RTK: Disable Automatic Terminal Wrapping`.
 - `rtk.followWorkspacePath`: keeps the displayed session aligned with the current workspace path.
 
 ## Terminal Safety
 
 Default behavior:
 
-- Status bar polling runs `rtk-node status --json` in the extension host only.
-- `RTK: Start Agent Terminal` creates a dedicated RTK terminal and sets only `RTK_SESSION_ID` and `RTK_SESSION_LABEL` in that terminal.
-- Normal terminals are not intercepted, and no shell profile is edited on extension activation.
-
-Optional automatic wrapping:
-
-- `RTK: Enable Automatic Terminal Wrapping` installs shell functions in the user's shell profile after confirmation.
-- New terminals started after that hook is installed route selected commands such as `git`, `npm`, and `rg` through `rtk-node`.
+- Status bar polling runs `rtk-node status --json` in the extension host.
+- `RTK: Start Agent Terminal` creates a dedicated RTK terminal and sets `RTK_SESSION_ID` and `RTK_SESSION_LABEL` in that terminal.
+- Automatic terminal wrapping is installed on startup when `rtk.autoWrapTerminals` is enabled.
+- Windows installs hook blocks into both PowerShell Core and Windows PowerShell profile paths.
+- Linux and macOS interactive bash, zsh, and fish shells receive profile functions.
+- Codex/VS Code zsh shells also receive a `.zshenv` loader so non-interactive zsh command shells are routed.
+- Bash non-interactive shells require the parent process to set `BASH_ENV`; the extension does not force that globally because it would affect unrelated system scripts.
 - The generated hooks validate RTK before wrapping and fall back to the native command if RTK is unavailable.
+- Set `RTK_NODE_DISABLE=1 <command>` to bypass wrapping for a single command.
 - Disable wrapping with `RTK: Disable Automatic Terminal Wrapping` or by running `rtk-node uninstall-hooks` in the affected shell.
 
 ## Diagnostics

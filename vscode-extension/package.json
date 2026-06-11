@@ -146,8 +146,8 @@
         },
         "rtk.autoWrapTerminals": {
           "type": "boolean",
-          "default": false,
-          "description": "Allow RTK: Enable Automatic Terminal Wrapping to install shell hooks. Disabled by default so normal terminals are unaffected after extension installation."
+          "default": true,
+          "description": "Automatically install shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Disable this to opt out and remove hooks with RTK: Disable Automatic Terminal Wrapping."
         },
         "rtk.followWorkspacePath": {
           "type": "boolean",
