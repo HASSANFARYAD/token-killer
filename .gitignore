@@ -1,0 +1,11 @@
+.env
+backend/.env.docker
+*.pyc
+
+node_modules/
+*.vsix
+admin-dashboard/dist/
+
+.ruff_cache
+.pytest_cache
+.venv

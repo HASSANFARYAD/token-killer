@@ -1,0 +1,226 @@
+{
+  "name": "savytox",
+  "displayName": "SavytoX",
+  "description": "Local-first token-saving terminal output and context optimization for VS Code LLM workflows.",
+  "version": "0.1.1",
+  "publisher": "rtk",
+  "scripts": {
+    "test": "node --test",
+    "package": "vsce package --allow-missing-repository",
+    "publish:dry-run": "vsce package --allow-missing-repository",
+    "install:local": "code --install-extension savytox-0.1.1.vsix --force"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "files": [
+    "extension.js",
+    "sync.js",
+    "README.md",
+    "LICENSE",
+    "bin",
+    "src"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:savytox.openTokenSaverTerminal",
+    "onCommand:savytox.copyOptimizedContext",
+    "onCommand:savytox.showDashboard",
+    "onCommand:rtk.refresh",
+    "onCommand:rtk.login",
+    "onCommand:rtk.logout",
+    "onCommand:rtk.syncUsage",
+    "onCommand:rtk.importUsage",
+    "onCommand:rtk.startAgentTerminal",
+    "onCommand:rtk.enableAutoWrap",
+    "onCommand:rtk.disableAutoWrap",
+    "onCommand:rtk.diagnostics",
+    "onCommand:rtk.useWorkspaceSession",
+    "onCommand:rtk.newSession",
+    "onCommand:rtk.openDashboard",
+    "onCommand:rtk.openAdminDashboard"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "savytox.openTokenSaverTerminal",
+        "title": "SavytoX: Open Token Saver Terminal"
+      },
+      {
+        "command": "savytox.copyOptimizedContext",
+        "title": "SavytoX: Copy Token-Optimized Context"
+      },
+      {
+        "command": "savytox.showDashboard",
+        "title": "SavytoX: Show Token Savings Dashboard"
+      },
+      {
+        "command": "rtk.refresh",
+        "title": "RTK: Refresh Token Savings"
+      },
+      {
+        "command": "rtk.openDashboard",
+        "title": "RTK: Open Dashboard"
+      },
+      {
+        "command": "rtk.openAdminDashboard",
+        "title": "RTK: Open Admin Dashboard"
+      },
+      {
+        "command": "rtk.login",
+        "title": "RTK: Login with Microsoft"
+      },
+      {
+        "command": "rtk.logout",
+        "title": "RTK: Logout"
+      },
+      {
+        "command": "rtk.syncUsage",
+        "title": "RTK: Sync Usage Now"
+      },
+      {
+        "command": "rtk.importUsage",
+        "title": "RTK: Import Existing Usage"
+      },
+      {
+        "command": "rtk.newSession",
+        "title": "RTK: Start New Session"
+      },
+      {
+        "command": "rtk.useWorkspaceSession",
+        "title": "RTK: Use Current Workspace Session"
+      },
+      {
+        "command": "rtk.enableAutoWrap",
+        "title": "RTK: Enable Automatic Terminal Wrapping"
+      },
+      {
+        "command": "rtk.disableAutoWrap",
+        "title": "RTK: Disable Automatic Terminal Wrapping"
+      },
+      {
+        "command": "rtk.diagnostics",
+        "title": "RTK: Run Diagnostics"
+      },
+      {
+        "command": "rtk.startAgentTerminal",
+        "title": "RTK: Start Agent Terminal"
+      }
+    ],
+    "configuration": {
+      "title": "SavytoX",
+      "properties": {
+        "savytox.engine": {
+          "type": "string",
+          "enum": [
+            "extension",
+            "external-cli",
+            "auto"
+          ],
+          "default": "extension",
+          "description": "Token-saving engine. The default extension mode works without external software."
+        },
+        "savytox.optimizationMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "balanced",
+            "aggressive"
+          ],
+          "default": "balanced",
+          "description": "Controls how much command output is compacted."
+        },
+        "savytox.enableTokenSaverTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the SavytoX Token Saver Terminal command."
+        },
+        "savytox.enableShellIntegrationCapture": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow SavytoX to use VS Code shell integration when available. It does not modify shell profiles."
+        },
+        "savytox.externalCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Optional external CLI command used only when savytox.engine is external-cli or auto."
+        },
+        "savytox.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show SavytoX token savings in the VS Code status bar."
+        },
+        "savytox.maxOutputChars": {
+          "type": "number",
+          "default": 18000,
+          "minimum": 1000,
+          "description": "Maximum optimized output size for built-in filters."
+        },
+        "savytox.preserveErrors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preserve errors, warnings, failed tests, and stack traces while compacting noisy output."
+        },
+        "rtk.command": {
+          "type": "string",
+          "default": "",
+          "description": "Legacy optional external RTK command. Prefer savytox.externalCommand for new setups."
+        },
+        "rtk.apiBaseUrl": {
+          "type": "string",
+          "default": "https://syntellio.hazentech.dev:9006",
+          "description": "Backend API base URL used for Microsoft login and secure RTK usage sync."
+        },
+        "rtk.authRequired": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require Microsoft login before organization usage sync and protected RTK dashboard data are available."
+        },
+        "rtk.refreshIntervalMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 1000,
+          "description": "How often the status bar refreshes token savings."
+        },
+        "rtk.defaultAgentCommand": {
+          "type": "string",
+          "default": "codex",
+          "description": "Default command for RTK: Start Agent Terminal."
+        },
+        "rtk.showTotalWhenNoSession": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show lifetime total savings when the active session has no recorded runs."
+        },
+        "rtk.syncEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send anonymized RTK usage snapshots and events to the configured backend API after login."
+        },
+        "rtk.syncIntervalMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 5000,
+          "description": "Minimum interval for backend usage sync attempts."
+        },
+        "rtk.autoWrapTerminals": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically install shell hooks so supported commands run through RTK-Node in VS Code and Codex shells. Enable this to opt in, and remove hooks with RTK: Disable Automatic Terminal Wrapping."
+        },
+        "rtk.followWorkspacePath": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the displayed RTK session aligned with the current workspace folder path."
+        }
+      }
+    }
+  }
+}

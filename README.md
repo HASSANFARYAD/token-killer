@@ -131,6 +131,65 @@ Show approximate saved tokens:
 rtk-node gain
 ```
 
+Show savings for the current chat/session:
+
+```sh
+rtk-node session
+rtk-node status --json
+```
+
+`rtk-node` groups session analytics by `RTK_SESSION_ID` when it is set. This lets a CLI wrapper, editor integration, or VS Code extension show savings for the active chat instead of only lifetime totals:
+
+```sh
+export RTK_SESSION_ID="chat-$(date +%s)"
+export RTK_SESSION_LABEL="Current chat"
+```
+
+PowerShell:
+
+```powershell
+$env:RTK_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+$env:RTK_SESSION_LABEL = "Current chat"
+```
+
+For status bars and editor integrations, poll:
+
+```sh
+rtk-node status --json
+```
+
+The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `RTK_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `rtk-node status --json`.
+
+For interactive agent CLIs, use the streaming wrapper:
+
+```sh
+rtk-node agent codex
+rtk-node agent claude
+rtk-node agent cursor-agent
+```
+
+The wrapper keeps the agent interactive, sets `RTK_SESSION_ID` for the session, and prints the session token-savings summary when the agent exits. Any command the agent runs through `rtk-node` is counted against that session.
+
+An initial VS Code status-bar extension lives in:
+
+```text
+vscode-extension/
+```
+
+It polls `rtk-node status --json` automatically and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled.
+
+The extension can also sync RTK usage to the backend after Microsoft login. The organization features live behind this architecture:
+
+```text
+VS Code Extension -> Backend API -> PostgreSQL Database
+```
+
+The extension never stores PostgreSQL credentials, Azure AD client secrets, or admin secrets. See:
+
+- `backend/README.md` for Super Admin bootstrap, Azure AD settings, sync, RBAC, and admin API testing.
+- `vscode-extension/README.md` for Extension Development Host testing, Microsoft login, usage sync, and dashboard commands.
+- `admin-dashboard/README.md` for the browser Super Admin dashboard.
+
 Analytics are stored locally in:
 
 ```text
@@ -150,3 +209,11 @@ Filters return:
 ```
 
 Keep filters conservative: preserve errors, failing assertions, file names, line numbers, exit behavior, and enough context for an AI agent to act.
+
+`rtk-node` only appends the metadata footer when the filtered output plus metadata is still smaller than the raw command output. For small commands, it may print only the filtered body or the original output to avoid turning a tiny result into token growth.
+
+Token counts default to an approximate one token per four characters. Set `RTK_CHARS_PER_TOKEN` when you want local analytics tuned for a specific agent or model family:
+
+```sh
+RTK_CHARS_PER_TOKEN=3.8 rtk-node session
+```
