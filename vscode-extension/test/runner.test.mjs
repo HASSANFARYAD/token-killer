@@ -37,6 +37,6 @@ test('runs PowerShell cmdlets on Windows', { skip: process.platform !== 'win32' 
   const result = runCommand('Get-Content', ['-Raw', 'README.md']);
 
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /# RTK Token Savings for VS Code/);
+  assert.match(result.stdout, /# SavytoX for VS Code/);
   assert.equal(result.stderr, '');
 });

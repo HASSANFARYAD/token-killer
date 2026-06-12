@@ -50,3 +50,30 @@ test('Get-ChildItem compacts PowerShell directory output', () => {
   assert.match(result.text, /Summary: 2 files, 2 dirs/);
   assert.doesNotMatch(result.text, /LastWriteTime/);
 });
+
+test('package-manager test/build failures use test-output filtering', () => {
+  const output = [
+    'lots of setup noise',
+    'FAIL src/app.test.ts',
+    'AssertionError: expected true',
+    'Test Suites: 1 failed, 1 total',
+    'Tests: 1 failed, 4 passed'
+  ].join('\n');
+
+  for (const [command, args] of [
+    ['npm', ['run', 'build']],
+    ['pnpm', ['test']],
+    ['yarn', ['test']]
+  ]) {
+    const result = filterOutput(command, args, output, config);
+    assert.equal(result.explain.filter, 'test output');
+    assert.match(result.text, /FAIL src\/app\.test\.ts/);
+    assert.match(result.text, /AssertionError/);
+  }
+});
+
+test('git status, diff, and log have command-specific filters', () => {
+  assert.equal(filterOutput('git', ['status'], '## main\n M file.js\n?? new.js', config).explain.filter, 'git status');
+  assert.equal(filterOutput('git', ['diff'], 'diff --git a/a b/a\n@@ -1 +1 @@\n-old\n+new', config).explain.filter, 'git diff');
+  assert.equal(filterOutput('git', ['log'], 'commit 1234567890abcdef\nAuthor: Test\n', config).explain.filter, 'git log');
+});

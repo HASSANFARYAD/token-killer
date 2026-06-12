@@ -461,6 +461,8 @@ export function classify(command, args = []) {
   if (base === 'rg' || base === 'grep') return searchMatches;
   if (base === 'pytest') return testOutput;
   if (base === 'npm' && args[0] === 'test') return testOutput;
+  if (base === 'npm' && args[0] === 'run' && ['build', 'test'].includes(args[1])) return testOutput;
+  if ((base === 'pnpm' || base === 'yarn') && ['test', 'build'].includes(args[0])) return testOutput;
   return null;
 }
 

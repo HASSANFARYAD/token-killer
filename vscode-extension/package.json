@@ -1,7 +1,7 @@
 {
   "name": "savytox",
   "displayName": "SavytoX",
-  "description": "Shows SavytoX token savings for the current agent chat session in the VS Code status bar.",
+  "description": "Local-first token-saving terminal output and context optimization for VS Code LLM workflows.",
   "version": "0.1.1",
   "publisher": "rtk",
   "scripts": {
@@ -29,6 +29,9 @@
   ],
   "activationEvents": [
     "onStartupFinished",
+    "onCommand:savytox.openTokenSaverTerminal",
+    "onCommand:savytox.copyOptimizedContext",
+    "onCommand:savytox.showDashboard",
     "onCommand:rtk.refresh",
     "onCommand:rtk.login",
     "onCommand:rtk.logout",
@@ -46,6 +49,18 @@
   "main": "./extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "savytox.openTokenSaverTerminal",
+        "title": "SavytoX: Open Token Saver Terminal"
+      },
+      {
+        "command": "savytox.copyOptimizedContext",
+        "title": "SavytoX: Copy Token-Optimized Context"
+      },
+      {
+        "command": "savytox.showDashboard",
+        "title": "SavytoX: Show Token Savings Dashboard"
+      },
       {
         "command": "rtk.refresh",
         "title": "RTK: Refresh Token Savings"
@@ -102,10 +117,61 @@
     "configuration": {
       "title": "SavytoX",
       "properties": {
+        "savytox.engine": {
+          "type": "string",
+          "enum": [
+            "extension",
+            "external-cli",
+            "auto"
+          ],
+          "default": "extension",
+          "description": "Token-saving engine. The default extension mode works without external software."
+        },
+        "savytox.optimizationMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "balanced",
+            "aggressive"
+          ],
+          "default": "balanced",
+          "description": "Controls how much command output is compacted."
+        },
+        "savytox.enableTokenSaverTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the SavytoX Token Saver Terminal command."
+        },
+        "savytox.enableShellIntegrationCapture": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow SavytoX to use VS Code shell integration when available. It does not modify shell profiles."
+        },
+        "savytox.externalCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Optional external CLI command used only when savytox.engine is external-cli or auto."
+        },
+        "savytox.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show SavytoX token savings in the VS Code status bar."
+        },
+        "savytox.maxOutputChars": {
+          "type": "number",
+          "default": 18000,
+          "minimum": 1000,
+          "description": "Maximum optimized output size for built-in filters."
+        },
+        "savytox.preserveErrors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preserve errors, warnings, failed tests, and stack traces while compacting noisy output."
+        },
         "rtk.command": {
           "type": "string",
           "default": "",
-          "description": "Optional external RTK command. Leave empty to use the RTK CLI bundled with this extension."
+          "description": "Legacy optional external RTK command. Prefer savytox.externalCommand for new setups."
         },
         "rtk.apiBaseUrl": {
           "type": "string",
@@ -114,7 +180,7 @@
         },
         "rtk.authRequired": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Require Microsoft login before organization usage sync and protected RTK dashboard data are available."
         },
         "rtk.refreshIntervalMs": {
@@ -135,7 +201,7 @@
         },
         "rtk.syncEnabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Send anonymized RTK usage snapshots and events to the configured backend API after login."
         },
         "rtk.syncIntervalMs": {

@@ -17,6 +17,10 @@ const {
   testAzureAdConnection,
   syncSnapshot
 } = require('./sync');
+const { checkCommand } = require('./src/adapters/externalCliAdapter.cjs');
+const { copyOptimizedContext } = require('./src/context/copyOptimizedContext.cjs');
+const { snapshot: localMetricsSnapshot, setSessionId, workspaceSessionId: savytoxWorkspaceSessionId } = require('./src/dashboard/metrics.cjs');
+const { openTokenSaverTerminal } = require('./src/terminal/tokenSaverTerminal.cjs');
 
 let statusItem;
 let refreshTimer;
@@ -36,6 +40,14 @@ function workspaceCwd() {
 
 function config() {
   return vscode.workspace.getConfiguration('rtk');
+}
+
+function savytoxConfig() {
+  return vscode.workspace.getConfiguration('savytox');
+}
+
+function engineMode() {
+  return savytoxConfig().get('engine', 'extension');
 }
 
 function makeSessionId() {
@@ -214,6 +226,29 @@ async function runRtkStatus() {
   throw new Error(errors.join('\n'));
 }
 
+async function runSavytoxStatus() {
+  const mode = engineMode();
+  if (mode === 'extension') {
+    return localMetricsSnapshot(extensionContext, workspaceCwd());
+  }
+
+  if (mode === 'external-cli') {
+    return runRtkStatus();
+  }
+
+  const externalCommand = savytoxConfig().get('externalCommand', '') || config().get('command', '');
+  const external = await checkCommand(externalCommand, workspaceCwd());
+  if (external.available) {
+    try {
+      return await runRtkStatus();
+    } catch {
+      return localMetricsSnapshot(extensionContext, workspaceCwd());
+    }
+  }
+
+  return localMetricsSnapshot(extensionContext, workspaceCwd());
+}
+
 async function refreshStatus() {
   if (!statusItem) return;
   if (followWorkspaceSession && config().get('followWorkspacePath', true) && sessionId !== workspaceSessionId()) {
@@ -222,31 +257,36 @@ async function refreshStatus() {
   }
 
   try {
-    const snapshot = await runRtkStatus();
+    const snapshot = await runSavytoxStatus();
     lastSnapshot = snapshot;
     lastError = null;
-    maybeSyncSnapshot(snapshot);
+    if (engineMode() !== 'extension') maybeSyncSnapshot(snapshot);
     const showTotal = config().get('showTotalWhenNoSession', true);
     const source = snapshot.session.runs || !showTotal ? snapshot.session : snapshot.total;
     const label = snapshot.session.runs || !showTotal ? 'session' : 'total';
 
-    statusItem.text = `RTK $(zap) ${formatTokens(source.savedTokens)} saved`;
+    if (source.runs) {
+      statusItem.text = `SavytoX $(zap) ${formatPercent(source.savedPercent || 0)} saved`;
+    } else {
+      statusItem.text = 'SavytoX: Ready';
+    }
     statusItem.tooltip = [
-      `RTK token savings (${label})`,
+      `SavytoX token savings (${label})`,
       `Saved: ${source.savedTokens} tokens (${source.savedPercent.toFixed(1)}%)`,
       `Original: ${source.originalTokens} tokens`,
       `Compressed: ${source.compressedTokens} tokens`,
       `Runs: ${source.runs}`,
       `Session: ${sessionLabel}`
     ].join('\n');
-    statusItem.command = 'rtk.openDashboard';
+    statusItem.command = 'savytox.showDashboard';
     statusItem.show();
     updateDashboard();
   } catch (error) {
     lastError = error;
-    statusItem.text = 'RTK unavailable';
-    statusItem.tooltip = `Unable to run RTK status: ${error.message}`;
-    statusItem.command = 'rtk.openDashboard';
+    lastSnapshot = localMetricsSnapshot(extensionContext, workspaceCwd());
+    statusItem.text = 'SavytoX: Ready';
+    statusItem.tooltip = `SavytoX extension engine is ready. Optional external CLI status failed: ${error.message}`;
+    statusItem.command = 'savytox.showDashboard';
     statusItem.show();
     updateDashboard();
   }
@@ -289,15 +329,34 @@ async function newSession() {
   followWorkspaceSession = false;
   sessionId = makeSessionId();
   sessionLabel = `VS Code ${new Date().toLocaleTimeString()}`;
+  await setSessionId(extensionContext, sessionId);
   await contextStateSet();
   await refreshStatus();
-  vscode.window.showInformationMessage(`RTK session started: ${sessionLabel}`);
+  vscode.window.showInformationMessage(`SavytoX session started: ${sessionLabel}`);
 }
 
 async function resetToWorkspaceSession() {
   followWorkspaceSession = true;
   useWorkspaceSession();
+  await setSessionId(extensionContext, savytoxWorkspaceSessionId(workspaceCwd()));
   await contextStateSet();
+  await refreshStatus();
+}
+
+async function openSavytoxTokenSaverTerminal() {
+  if (!savytoxConfig().get('enableTokenSaverTerminal', true)) {
+    vscode.window.showInformationMessage('Enable savytox.enableTokenSaverTerminal to use the Token Saver Terminal.');
+    return;
+  }
+  openTokenSaverTerminal(extensionContext, workspaceCwd(), refreshStatus);
+}
+
+async function copySavytoxOptimizedContext() {
+  await copyOptimizedContext(extensionContext, workspaceCwd(), {
+    optimizationMode: savytoxConfig().get('optimizationMode', 'balanced'),
+    maxOutputChars: savytoxConfig().get('maxOutputChars', 18000),
+    preview: true
+  });
   await refreshStatus();
 }
 
@@ -568,7 +627,7 @@ function dashboardHtml(snapshot, error) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RTK Dashboard</title>
+  <title>SavytoX Dashboard</title>
   <style>
     body {
       color: var(--vscode-foreground);
@@ -659,11 +718,11 @@ function dashboardHtml(snapshot, error) {
 <body>
   <header>
     <div>
-      <h1>RTK Token Savings</h1>
+      <h1>SavytoX Token Savings</h1>
       <div class="subtitle">Session: ${escapeHtml(session.label || sessionLabel)}</div>
     </div>
   </header>
-  ${error ? `<div class="notice">Unable to read RTK status: ${escapeHtml(error.message)}</div>` : ''}
+  ${error && engineMode() !== 'extension' ? `<div class="notice">Optional external CLI status failed: ${escapeHtml(error.message)}</div>` : ''}
   <div class="metrics">
     ${metric('Session Saved', `${formatTokens(session.savedTokens || 0)} tokens`, formatPercent(session.savedPercent || 0))}
     ${metric('Session Runs', session.runs || 0)}
@@ -949,8 +1008,8 @@ function updateDashboard() {
 async function openDashboard() {
   if (!dashboardPanel) {
     dashboardPanel = vscode.window.createWebviewPanel(
-      'rtkDashboard',
-      'RTK Dashboard',
+      'savytoxDashboard',
+      'SavytoX Dashboard',
       vscode.ViewColumn.One,
       { enableScripts: false }
     );
@@ -1073,12 +1132,16 @@ async function importUsageNow() {
 async function activate(context) {
   extensionContext = context;
   useWorkspaceSession();
+  await setSessionId(context, savytoxWorkspaceSessionId(workspaceCwd()));
 
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusItem.text = 'RTK starting';
-  statusItem.show();
+  statusItem.text = 'SavytoX: Ready';
+  if (savytoxConfig().get('showStatusBar', true)) statusItem.show();
   context.subscriptions.push(statusItem);
 
+  context.subscriptions.push(vscode.commands.registerCommand('savytox.openTokenSaverTerminal', openSavytoxTokenSaverTerminal));
+  context.subscriptions.push(vscode.commands.registerCommand('savytox.copyOptimizedContext', copySavytoxOptimizedContext));
+  context.subscriptions.push(vscode.commands.registerCommand('savytox.showDashboard', openDashboard));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.refresh', refreshStatus));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.login', () => loginWithMicrosoft(context)));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.logout', () => logout(context)));
@@ -1091,11 +1154,11 @@ async function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('rtk.enableAutoWrap', enableAutoWrap));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.disableAutoWrap', disableAutoWrap));
   context.subscriptions.push(vscode.commands.registerCommand('rtk.diagnostics', runDiagnostics));
-  context.subscriptions.push(vscode.commands.registerCommand('rtk.startAgentTerminal', startAgentTerminal));
+  context.subscriptions.push(vscode.commands.registerCommand('rtk.startAgentTerminal', openSavytoxTokenSaverTerminal));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(resetToWorkspaceSession));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
     if (event.affectsConfiguration('rtk.refreshIntervalMs')) startTimer(context);
-    if (event.affectsConfiguration('rtk')) refreshStatus();
+    if (event.affectsConfiguration('rtk') || event.affectsConfiguration('savytox')) refreshStatus();
   }));
 
   context.subscriptions.push({
@@ -1106,12 +1169,25 @@ async function activate(context) {
   });
 
   await contextStateSet();
-  await ensureAutoWrapInstalled();
   startTimer(context);
   await refreshStatus();
-  ensureAuthenticated(context, false).catch((error) => {
-    lastError = error;
-  });
+  if (config().get('authRequired', false)) {
+    ensureAuthenticated(context, false).catch((error) => {
+      lastError = error;
+    });
+  }
+  if (!context.globalState.get('savytox.onboardingShown')) {
+    const choice = await vscode.window.showInformationMessage(
+      'SavytoX is ready with local-first token saving in your VS Code workflow.',
+      'Open Token Saver Terminal',
+      'Copy Optimized Context',
+      'Show Dashboard'
+    );
+    await context.globalState.update('savytox.onboardingShown', true);
+    if (choice === 'Open Token Saver Terminal') await openSavytoxTokenSaverTerminal();
+    if (choice === 'Copy Optimized Context') await copySavytoxOptimizedContext();
+    if (choice === 'Show Dashboard') await openDashboard();
+  }
 }
 
 function deactivate() {
