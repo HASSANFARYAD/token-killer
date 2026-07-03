@@ -1,12 +1,12 @@
 $ErrorActionPreference = "Continue"
 
-if (Get-Command rtk-node -ErrorAction SilentlyContinue) {
-  rtk-node uninstall
+if (Get-Command noisegate -ErrorAction SilentlyContinue) {
+  noisegate uninstall
 }
 
-$prefix = Join-Path $env:LOCALAPPDATA "rtk-node"
+$prefix = Join-Path $env:LOCALAPPDATA "noisegate"
 if (Get-Command npm -ErrorAction SilentlyContinue) {
-  npm uninstall -g rtk-node --prefix $prefix
+  npm uninstall -g noisegate --prefix $prefix
 }
 
-Write-Host "Removed rtk-node where npm could find it. Remove analytics manually from LOCALAPPDATA data paths if desired."
+Write-Host "Removed noisegate where npm could find it. Remove analytics manually from LOCALAPPDATA data paths if desired."

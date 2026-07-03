@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const APP_NAME = 'rtk-node';
+export const APP_NAME = 'noisegate';
 
 export const DEFAULT_CONFIG = {
   excludedCommands: [],

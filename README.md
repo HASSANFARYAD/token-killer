@@ -1,26 +1,33 @@
-# rtk-node
+# NoiseGate
 
-`rtk-node` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It is inspired by RTK-style token reduction, but intentionally starts with a small, maintainable set of command-aware filters.
+`noisegate` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It compresses command output before it enters your AI agent's context, saving tokens and reducing noise.
+
+Supports **opencode**, **Codex (Amazon Q Developer CLI)**, **Claude Code**, and any terminal-based AI agent.
 
 ## Install
 
-From npm:
+Everything comes in a single npm package — CLI + VS Code extension included.
 
 ```sh
-npm install -g rtk-node
-rtk-node init -g
+npm install -g noisegate
+noisegate init -g --all-agents
 ```
+
+That's it. One install command. The `init` step:
+- Installs shell hooks so common commands auto-pipe through `noisegate`
+- Writes agent instructions for opencode, Codex, and Claude Code
+- Auto-detects VS Code and installs the status-bar extension
 
 One-liner for Linux/macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/your-org/rtk-node/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/has-san/noisegate/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/your-org/rtk-node/main/install.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/has-san/noisegate/main/install.ps1 -UseBasicParsing | iex
 ```
 
 For local development:
@@ -28,46 +35,50 @@ For local development:
 ```sh
 npm install
 npm link
-rtk-node init -g --codex
+noisegate init -g --all-agents
 ```
+
+To skip VS Code extension install: `noisegate init -g --all-agents --no-vscode`
 
 ## Usage
 
 ```sh
-rtk-node git status
-rtk-node git diff
-rtk-node rg "TODO" src
-rtk-node pytest -q
-rtk-node npm test
+noisegate git status
+noisegate git diff
+noisegate rg "TODO" src
+noisegate pytest -q
+noisegate npm test
 ```
 
 Debug with raw output:
 
 ```sh
-rtk-node -v pytest -q
+noisegate -v pytest -q
 ```
 
 Strip color:
 
 ```sh
-rtk-node --no-colors git diff
+noisegate --no-colors git diff
 ```
 
 ## Shell Hook
 
-Install wrapper functions for supported commands:
+Install wrapper functions to auto-pipe commands through NoiseGate:
 
 ```sh
-rtk-node init -g
+noisegate init -g
 ```
 
-For Codex:
+For AI coding agents:
 
 ```sh
-rtk-node init -g --codex
+noisegate init -g --codex       # Amazon Q Developer CLI (Codex)
+noisegate init -g --opencode    # opencode AI
+noisegate init -g --all-agents  # All supported agents
 ```
 
-On native Windows, Codex mode writes `AGENTS.md` and `RTK.md` instructions. Use WSL for Bash-level auto-rewrite.
+On native Windows, agent mode writes `AGENTS.md` and `NOISEGATE.md` instructions. Use WSL for Bash-level auto-rewrite.
 
 This updates the detected profile:
 
@@ -79,7 +90,7 @@ This updates the detected profile:
 Remove the hook:
 
 ```sh
-rtk-node uninstall
+noisegate uninstall
 ```
 
 Or run the uninstall helper:
@@ -88,7 +99,7 @@ Or run the uninstall helper:
 ./uninstall.sh
 ```
 
-The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids recursive invocation with `RTK_NODE_ACTIVE`.
+The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids recursive invocation with `NOISEGATE_ACTIVE`.
 
 ## Filters
 
@@ -103,7 +114,7 @@ The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids rec
 Config lives at:
 
 ```text
-~/.config/rtk-node/config.json
+~/.config/noisegate/config.json
 ```
 
 Defaults:
@@ -123,55 +134,67 @@ Defaults:
 
 Telemetry is local only. No data is sent externally by default.
 
-## Analytics
+## Token Tracking
 
 Show approximate saved tokens:
 
 ```sh
-rtk-node gain
+noisegate gain
 ```
 
 Show savings for the current chat/session:
 
 ```sh
-rtk-node session
-rtk-node status --json
+noisegate session
+noisegate status --json
 ```
 
-`rtk-node` groups session analytics by `RTK_SESSION_ID` when it is set. This lets a CLI wrapper, editor integration, or VS Code extension show savings for the active chat instead of only lifetime totals:
+`noisegate` groups session analytics by session ID environment variables. It detects sessions for all AI coding agents automatically:
+
+| Priority | Env Variable | Agent |
+|---|---|---|
+| 1 | `NOISEGATE_SESSION_ID` | NoiseGate-native |
+| 2 | `RTK_SESSION_ID` | Legacy RTK compat |
+| 3 | `OPENCODE_SESSION_ID` | opencode AI |
+| 4 | `CLAUDE_SESSION_ID` | Claude Code |
+| 5 | `CODEX_SESSION_ID` | Amazon Q Developer CLI (Codex) |
+| 6 | `TERM_SESSION_ID` | Terminal session |
+| 7 | (username:cwd) | Fallback |
+
+This lets any CLI wrapper, editor integration, or VS Code extension show savings for the active chat:
 
 ```sh
-export RTK_SESSION_ID="chat-$(date +%s)"
-export RTK_SESSION_LABEL="Current chat"
+export NOISEGATE_SESSION_ID="chat-$(date +%s)"
+export NOISEGATE_SESSION_LABEL="Current chat"
 ```
 
 PowerShell:
 
 ```powershell
-$env:RTK_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
-$env:RTK_SESSION_LABEL = "Current chat"
+$env:NOISEGATE_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+$env:NOISEGATE_SESSION_LABEL = "Current chat"
 ```
 
 For status bars and editor integrations, poll:
 
 ```sh
-rtk-node status --json
+noisegate status --json
 ```
 
-The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `RTK_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `rtk-node status --json`.
+The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `NOISEGATE_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `noisegate status --json`.
 
-An initial VS Code status-bar extension lives in:
+A VS Code status-bar extension lives in:
 
 ```text
 vscode-extension/
 ```
 
-It polls `rtk-node status --json` automatically and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled.
+It polls `noisegate status --json` automatically and includes `NoiseGate: Start Agent Terminal` for launching opencode, Codex, Claude Code, or any CLI agent with session tracking enabled.
 
 Analytics are stored locally in:
 
 ```text
-~/.local/share/rtk-node/analytics.json
+~/.local/share/noisegate/analytics.json
 ```
 
 Token counts are estimated at roughly one token per four characters to avoid native dependencies. A tokenizer package can be added later behind the same analytics interface.

@@ -1,0 +1,15 @@
+node_modules/
+server/node_modules/
+server/data/
+
+backend/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+*.vsix
+
+vscode-extension/$null
+
+.claude/settings.local.json

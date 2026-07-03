@@ -1,5 +1,5 @@
 import { filterOutput } from './filters.js';
-import { installCodexInstructions, installHook, uninstallCodexInstructions, uninstallHook } from './hooks.js';
+import { installAgentInstructions, installHook, installVscodeExtension, uninstallAgentInstructions, uninstallHook, uninstallVscodeExtension } from './hooks.js';
 import { loadConfig, ensureConfig, configPath } from './config.js';
 import { analyticsSnapshot, currentSessionId, formatGain, formatSessionGain, recordRun } from './stats.js';
 import { runCommand } from './runner.js';
@@ -14,7 +14,8 @@ function parse(argv) {
     ultraCompact: false,
     hookOnly: false,
     global: false,
-    codex: false,
+    noVscode: false,
+    agents: [],
     show: false,
     json: false
   };
@@ -39,7 +40,10 @@ function parse(argv) {
     for (const arg of rest) {
       if (arg === '--hook-only') flags.hookOnly = true;
       else if (arg === '-g' || arg === '--global') flags.global = true;
-      else if (arg === '--codex') flags.codex = true;
+      else if (arg === '--codex') flags.agents.push('codex');
+      else if (arg === '--opencode') flags.agents.push('opencode');
+      else if (arg === '--all-agents') flags.agents = ['opencode', 'codex', 'claude'];
+      else if (arg === '--no-vscode') flags.noVscode = true;
       else if (arg === '--show') flags.show = true;
       else if (arg === '--uninstall') flags.uninstall = true;
       else positional.push(arg);
@@ -59,24 +63,35 @@ function parse(argv) {
 export const parseForTest = parse;
 
 function help() {
-  return `rtk-node - thin command output proxy
+  return `noisegate - thin command output proxy
 
 Usage:
-  rtk-node <command> [args...]
-  rtk-node init [-g] [--hook-only]
-  rtk-node init -g --codex
-  rtk-node init -g --uninstall
-  rtk-node uninstall
-  rtk-node gain
-  rtk-node session [--json]
-  rtk-node status [--json]
-  rtk-node config
+  noisegate <command> [args...]
+  noisegate init [-g] [--hook-only] [--no-vscode]
+  noisegate init -g --codex
+  noisegate init -g --opencode
+  noisegate init -g --all-agents
+  noisegate init -g --uninstall
+  noisegate uninstall
+  noisegate gain
+  noisegate session [--json]
+  noisegate status [--json]
+  noisegate config
 
 Flags:
   --no-colors       Strip ANSI color codes from output
   -v, --verbose     Print unfiltered command output
   -u, --ultra-compact
                     Use more aggressive truncation and shorter summaries
+
+Agent init flags:
+  --codex           Install NoiseGate instructions for Codex AI
+  --opencode        Install NoiseGate instructions for opencode AI
+  --all-agents      Install NoiseGate instructions for all supported agents
+  --no-vscode       Skip auto-install of VS Code extension
+
+Note: \`noisegate init -g --all-agents\` installs everything in one step:
+  shell hooks + agent instructions + VS Code extension (if VS Code detected).
 `;
 }
 
@@ -88,7 +103,7 @@ function metadata({ command, args, result, original, compressed, truncated }) {
   const saved = originalBytes ? ((Math.max(0, originalBytes - compressedBytes) / originalBytes) * 100).toFixed(1) : '0.0';
   return [
     '',
-    '--- rtk-node metadata ---',
+    '--- noisegate metadata ---',
     `command: ${[command, ...args].join(' ')}`,
     `exit_code: ${result.status}`,
     `duration_ms: ${result.durationMs.toFixed(1)}`,
@@ -111,38 +126,61 @@ export async function main(argv) {
   if (subcommand === 'init') {
     if (flags.uninstall) {
       const hook = uninstallHook({});
-      const codex = uninstallCodexInstructions({ global: flags.global });
+      const vscode = uninstallVscodeExtension();
+      const agents = uninstallAgentInstructions({ global: flags.global, agents: flags.agents.length ? flags.agents : undefined });
       console.log(`Removed shell hook from ${hook.profile}`);
-      console.log(`Removed Codex RTK files from ${codex.root}`);
+      if (vscode.uninstalled) console.log('Uninstalled VS Code extension');
+      else if (!vscode.reason?.includes('not found')) console.log(`VS Code extension: ${vscode.reason || 'skipped'}`);
+      for (const result of agents) {
+        console.log(`Removed agent files from ${result.agent}: ${result.noisegatePath}`);
+      }
       return;
     }
     if (flags.show) {
       console.log(`config: ${configPath()}`);
       console.log('hook commands: git, rg, grep, pytest, npm, ls, find, cat');
-      console.log('codex mode: rtk-node init -g --codex');
+      console.log('agent modes: --codex, --opencode, --all-agents');
+      console.log('extension: installs VS Code extension automatically when VS Code is detected');
+      console.log('  --no-vscode  Skip VS Code extension install');
       return;
     }
     ensureConfig();
-    if (flags.codex) {
-      const codex = installCodexInstructions({ global: flags.global });
-      console.log(`Installed Codex RTK instructions in ${codex.root}`);
+    if (flags.agents.length) {
+      const results = installAgentInstructions({ global: flags.global, agents: flags.agents });
+      for (const result of results) {
+        console.log(`Installed NoiseGate instructions for ${result.agent} in ${result.noisegatePath}`);
+      }
       if (!flags.hookOnly && process.platform !== 'win32') {
         const hook = installHook({ global: flags.global, hookOnly: flags.hookOnly });
         console.log(`Installed shell hook in ${hook.profile}`);
       } else if (process.platform === 'win32') {
-        console.log('Native Windows Codex mode uses AGENTS.md/RTK.md instructions. Use WSL for shell auto-rewrite.');
+        console.log('Native Windows mode uses AGENTS.md/NOISEGATE.md instructions. Use WSL for shell auto-rewrite.');
+      } else if (flags.hookOnly) {
+        console.log('Hook-only mode: no shell functions installed.');
+      }
+      if (!flags.noVscode) {
+        const vscode = installVscodeExtension();
+        if (vscode.installed) console.log(`Installed VS Code extension from ${vscode.vsix}`);
+        else if (vscode.reason) console.log(`VS Code extension: ${vscode.reason}`);
       }
     } else {
       const result = installHook({ global: flags.global, hookOnly: flags.hookOnly });
-      console.log(`Installed rtk-node hook in ${result.profile}`);
+      console.log(`Installed noisegate hook in ${result.profile}`);
       console.log('Restart your shell or source the profile for changes to take effect.');
     }
     return;
   }
 
   if (subcommand === 'uninstall') {
-    const result = uninstallHook({});
-    console.log(result.changed ? `Removed rtk-node hook from ${result.profile}` : `No rtk-node hook found in ${result.profile}`);
+    const hook = uninstallHook({});
+    const vscode = uninstallVscodeExtension();
+    const agents = uninstallAgentInstructions({ global: true });
+    console.log(hook.changed ? `Removed shell hook from ${hook.profile}` : `No noisegate hook found in ${hook.profile}`);
+    if (vscode.uninstalled) console.log('Uninstalled VS Code extension');
+    else if (!vscode.reason?.includes('not found')) console.log(`VS Code extension: ${vscode.reason || 'skipped'}`);
+    for (const result of agents) {
+      console.log(`Removed agent files from ${result.agent}: ${result.noisegatePath}`);
+    }
     return;
   }
 
@@ -166,7 +204,7 @@ export async function main(argv) {
       console.log(JSON.stringify(snapshot, null, 2));
     } else {
       console.log([
-        `RTK status`,
+        `NoiseGate status`,
         `session_id: ${currentSessionId()}`,
         `session_saved: ${snapshot.session.savedTokens} tokens (${snapshot.session.savedPercent.toFixed(1)}%)`,
         `total_saved: ${snapshot.total.savedTokens} tokens (${snapshot.total.savedPercent.toFixed(1)}%)`
@@ -194,7 +232,7 @@ export async function main(argv) {
   const rawOutput = `${result.stdout}${result.stderr}`;
 
   if (result.error) {
-    console.error(`[rtk-node] failed to execute ${command}: ${result.error.message}`);
+    console.error(`[noisegate] failed to execute ${command}: ${result.error.message}`);
     process.exit(result.status);
   }
 
@@ -207,7 +245,7 @@ export async function main(argv) {
   try {
     filtered = filterOutput(command, args, rawOutput, config);
   } catch (error) {
-    process.stderr.write(`[rtk-node] filter failed, printing raw output: ${error.message}\n`);
+    process.stderr.write(`[noisegate] filter failed, printing raw output: ${error.message}\n`);
     process.stdout.write(maybeStripAnsi(rawOutput, flags.colors && config.colors));
     process.exit(result.status);
   }

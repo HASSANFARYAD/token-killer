@@ -19,17 +19,44 @@ function emptyDb() {
   };
 }
 
+const AGENT_SESSION_IDS = [
+  'NOISEGATE_SESSION_ID',
+  'RTK_SESSION_ID',
+  'OPENCODE_SESSION_ID',
+  'CLAUDE_SESSION_ID',
+  'CODEX_SESSION_ID',
+  'TERM_SESSION_ID',
+  'WINDOW_ID'
+];
+
 function sessionId() {
-  return process.env.RTK_SESSION_ID
-    || process.env.CLAUDE_SESSION_ID
-    || process.env.CODEX_SESSION_ID
-    || process.env.TERM_SESSION_ID
-    || `${os.userInfo().username}:${process.cwd()}`;
+  for (const key of AGENT_SESSION_IDS) {
+    if (process.env[key]) return process.env[key];
+  }
+  return `${os.userInfo().username}:${process.cwd()}`;
+}
+
+const AGENT_LABEL_KEYS = [
+  'NOISEGATE_SESSION_LABEL',
+  'OPENCODE_SESSION_LABEL',
+  'RTK_SESSION_LABEL',
+  'CLAUDE_SESSION_LABEL',
+  'CODEX_SESSION_LABEL'
+];
+
+function resolveAgentLabel() {
+  for (const key of AGENT_LABEL_KEYS) {
+    if (process.env[key]) return process.env[key];
+  }
+  return null;
 }
 
 function sessionLabel(id) {
-  if (process.env.RTK_SESSION_LABEL) return process.env.RTK_SESSION_LABEL;
-  if (id === process.env.RTK_SESSION_ID) return id;
+  const label = resolveAgentLabel();
+  if (label) return label;
+  for (const key of AGENT_SESSION_IDS) {
+    if (id === process.env[key]) return id;
+  }
   return process.cwd();
 }
 
@@ -154,7 +181,7 @@ export function formatGain() {
   const rows = formatCommandRows(snapshot.total.commands);
 
   return [
-    `RTK token gain`,
+    `NoiseGate token savings`,
     `runs: ${snapshot.total.runs}`,
     `saved: ${snapshot.total.savedTokens} tokens (${snapshot.total.savedPercent.toFixed(1)}%)`,
     `original: ${snapshot.total.originalTokens} tokens`,
@@ -169,7 +196,7 @@ export function formatSessionGain(id = sessionId()) {
   const rows = formatCommandRows(snapshot.session.commands);
 
   return [
-    `RTK session token gain`,
+    `NoiseGate session token savings`,
     `session: ${snapshot.session.label}`,
     `runs: ${snapshot.session.runs}`,
     `saved: ${snapshot.session.savedTokens} tokens (${snapshot.session.savedPercent.toFixed(1)}%)`,
