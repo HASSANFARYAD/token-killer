@@ -41,8 +41,8 @@ export function ensureConfig() {
 }
 
 export function loadConfig() {
-  ensureConfig();
   try {
+    ensureConfig();
     const parsed = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
     return { ...DEFAULT_CONFIG, ...parsed };
   } catch {

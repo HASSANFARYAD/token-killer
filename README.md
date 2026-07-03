@@ -1,37 +1,26 @@
-# Sesshush
+# rtk-node
 
-[![npm version](https://img.shields.io/npm/v/sesshush)](https://www.npmjs.com/package/sesshush)
+`rtk-node` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It is inspired by RTK-style token reduction, but intentionally starts with a small, maintainable set of command-aware filters.
 
-`sesshush` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It compresses command output before entering your AI agent's context — saving tokens and reducing noise.
-
-Supports **opencode**, **Codex (Amazon Q Developer CLI)**, **Claude Code**, and any terminal-based AI agent.
-
-## Quick Install
+## Install
 
 From npm:
 
 ```sh
-npm install -g sesshush
+npm install -g rtk-node
+rtk-node init -g
 ```
-
-Then run the one-time setup to install shell hooks + agent instructions + VS Code extension:
-
-```sh
-sesshush init -g --all-agents
-```
-
-That's it. You can now use `sesshush` transparently — common commands like `git`, `rg`, `grep`, `pytest`, and `npm test` are auto-wrapped to pipe through the filter.
 
 One-liner for Linux/macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/HASSANFARYAD/token-killer/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/your-org/rtk-node/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/HASSANFARYAD/token-killer/main/install.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/your-org/rtk-node/main/install.ps1 -UseBasicParsing | iex
 ```
 
 For local development:
@@ -39,50 +28,46 @@ For local development:
 ```sh
 npm install
 npm link
-sesshush init -g --all-agents
+rtk-node init -g --codex
 ```
-
-To skip VS Code extension install: `sesshush init -g --all-agents --no-vscode`
 
 ## Usage
 
 ```sh
-sesshush git status
-sesshush git diff
-sesshush rg "TODO" src
-sesshush pytest -q
-sesshush npm test
+rtk-node git status
+rtk-node git diff
+rtk-node rg "TODO" src
+rtk-node pytest -q
+rtk-node npm test
 ```
 
 Debug with raw output:
 
 ```sh
-sesshush -v pytest -q
+rtk-node -v pytest -q
 ```
 
 Strip color:
 
 ```sh
-sesshush --no-colors git diff
+rtk-node --no-colors git diff
 ```
 
 ## Shell Hook
 
-Install wrapper functions to auto-pipe commands through Sesshush:
+Install wrapper functions for supported commands:
 
 ```sh
-sesshush init -g
+rtk-node init -g
 ```
 
-For AI coding agents:
+For Codex:
 
 ```sh
-sesshush init -g --codex       # Amazon Q Developer CLI (Codex)
-sesshush init -g --opencode    # opencode AI
-sesshush init -g --all-agents  # All supported agents
+rtk-node init -g --codex
 ```
 
-On native Windows, agent mode writes `AGENTS.md` and `SESSHUSH.md` instructions. Use WSL for Bash-level auto-rewrite.
+On native Windows, Codex mode writes `AGENTS.md` and `RTK.md` instructions. Use WSL for Bash-level auto-rewrite.
 
 This updates the detected profile:
 
@@ -94,7 +79,7 @@ This updates the detected profile:
 Remove the hook:
 
 ```sh
-sesshush uninstall
+rtk-node uninstall
 ```
 
 Or run the uninstall helper:
@@ -103,7 +88,7 @@ Or run the uninstall helper:
 ./uninstall.sh
 ```
 
-The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids recursive invocation with `SESSHUSH_ACTIVE`.
+The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids recursive invocation with `RTK_NODE_ACTIVE`.
 
 ## Filters
 
@@ -118,7 +103,7 @@ The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids rec
 Config lives at:
 
 ```text
-~/.config/sesshush/config.json
+~/.config/rtk-node/config.json
 ```
 
 Defaults:
@@ -138,68 +123,77 @@ Defaults:
 
 Telemetry is local only. No data is sent externally by default.
 
-## Token Tracking
+## Analytics
 
 Show approximate saved tokens:
 
 ```sh
-sesshush gain
+rtk-node gain
 ```
 
 Show savings for the current chat/session:
 
 ```sh
-sesshush session
-sesshush status --json
+rtk-node session
+rtk-node status --json
 ```
 
-`sesshush` groups session analytics by session ID environment variables. It detects sessions for all AI coding agents automatically:
-
-| Priority | Env Variable | Agent |
-|---|---|---|
-| 1 | `SESSHUSH_SESSION_ID` | Sesshush-native |
-| 2 | `NOISEGATE_SESSION_ID` | Legacy noisegate compat |
-| 3 | `RTK_SESSION_ID` | Legacy RTK compat |
-| 4 | `OPENCODE_SESSION_ID` | opencode AI |
-| 5 | `CLAUDE_SESSION_ID` | Claude Code |
-| 6 | `CODEX_SESSION_ID` | Amazon Q Developer CLI (Codex) |
-| 7 | `TERM_SESSION_ID` | Terminal session |
-| 8 | (username:cwd) | Fallback |
-
-This lets any CLI wrapper, editor integration, or VS Code extension show savings for the active chat:
+`rtk-node` groups session analytics by `RTK_SESSION_ID` when it is set. This lets a CLI wrapper, editor integration, or VS Code extension show savings for the active chat instead of only lifetime totals:
 
 ```sh
-export SESSHUSH_SESSION_ID="chat-$(date +%s)"
-export SESSHUSH_SESSION_LABEL="Current chat"
+export RTK_SESSION_ID="chat-$(date +%s)"
+export RTK_SESSION_LABEL="Current chat"
 ```
 
 PowerShell:
 
 ```powershell
-$env:SESSHUSH_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
-$env:SESSHUSH_SESSION_LABEL = "Current chat"
+$env:RTK_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+$env:RTK_SESSION_LABEL = "Current chat"
 ```
 
 For status bars and editor integrations, poll:
 
 ```sh
-sesshush status --json
+rtk-node status --json
 ```
 
-The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `SESSHUSH_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `sesshush status --json`.
+The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `RTK_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `rtk-node status --json`.
 
-A VS Code status-bar extension lives in:
+For interactive agent CLIs, use the streaming wrapper:
+
+```sh
+rtk-node agent codex
+rtk-node agent claude
+rtk-node agent cursor-agent
+```
+
+The wrapper keeps the agent interactive, sets `RTK_SESSION_ID` for the session, and prints the session token-savings summary when the agent exits. Any command the agent runs through `rtk-node` is counted against that session.
+
+An initial VS Code status-bar extension lives in:
 
 ```text
 vscode-extension/
 ```
 
-It polls `sesshush status --json` automatically and includes `Sesshush: Start Agent Terminal` for launching opencode, Codex, Claude Code, or any CLI agent with session tracking enabled.
+It polls `rtk-node status --json` automatically and includes `RTK: Start Agent Terminal` for launching Codex or another CLI with session tracking enabled.
+
+The extension can also sync RTK usage to the backend after Microsoft login. The organization features live behind this architecture:
+
+```text
+VS Code Extension -> Backend API -> PostgreSQL Database
+```
+
+The extension never stores PostgreSQL credentials, Azure AD client secrets, or admin secrets. See:
+
+- `backend/README.md` for Super Admin bootstrap, Azure AD settings, sync, RBAC, and admin API testing.
+- `vscode-extension/README.md` for Extension Development Host testing, Microsoft login, usage sync, and dashboard commands.
+- `admin-dashboard/README.md` for the browser Super Admin dashboard.
 
 Analytics are stored locally in:
 
 ```text
-~/.local/share/sesshush/analytics.json
+~/.local/share/rtk-node/analytics.json
 ```
 
 Token counts are estimated at roughly one token per four characters to avoid native dependencies. A tokenizer package can be added later behind the same analytics interface.
@@ -215,3 +209,11 @@ Filters return:
 ```
 
 Keep filters conservative: preserve errors, failing assertions, file names, line numbers, exit behavior, and enough context for an AI agent to act.
+
+`rtk-node` only appends the metadata footer when the filtered output plus metadata is still smaller than the raw command output. For small commands, it may print only the filtered body or the original output to avoid turning a tiny result into token growth.
+
+Token counts default to an approximate one token per four characters. Set `RTK_CHARS_PER_TOKEN` when you want local analytics tuned for a specific agent or model family:
+
+```sh
+RTK_CHARS_PER_TOKEN=3.8 rtk-node session
+```

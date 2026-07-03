@@ -1,0 +1,5 @@
+{
+  "rtk.apiBaseUrl": "https://syntellio.hazentech.dev:9006/",
+  "rtk.syncEnabled": true,
+  "rtk.authRequired": true
+}
