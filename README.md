@@ -1,33 +1,37 @@
 # Sesshush
 
-`sesshush` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It compresses command output before it enters your AI agent's context, saving tokens and reducing noise.
+[![npm version](https://img.shields.io/npm/v/sesshush)](https://www.npmjs.com/package/sesshush)
+
+`sesshush` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It compresses command output before entering your AI agent's context — saving tokens and reducing noise.
 
 Supports **opencode**, **Codex (Amazon Q Developer CLI)**, **Claude Code**, and any terminal-based AI agent.
 
-## Install
+## Quick Install
 
-Everything comes in a single npm package — CLI + VS Code extension included.
+From npm:
 
 ```sh
 npm install -g sesshush
+```
+
+Then run the one-time setup to install shell hooks + agent instructions + VS Code extension:
+
+```sh
 sesshush init -g --all-agents
 ```
 
-That's it. One install command. The `init` step:
-- Installs shell hooks so common commands auto-pipe through `sesshush`
-- Writes agent instructions for opencode, Codex, and Claude Code
-- Auto-detects VS Code and installs the status-bar extension
+That's it. You can now use `sesshush` transparently — common commands like `git`, `rg`, `grep`, `pytest`, and `npm test` are auto-wrapped to pipe through the filter.
 
 One-liner for Linux/macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/has-san/sesshush/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/HASSANFARYAD/token-killer/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/has-san/sesshush/main/install.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/HASSANFARYAD/token-killer/main/install.ps1 -UseBasicParsing | iex
 ```
 
 For local development:
