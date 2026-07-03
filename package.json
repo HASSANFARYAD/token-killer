@@ -1,10 +1,10 @@
 {
-  "name": "rtk-node",
-  "version": "0.1.0",
-  "description": "Thin command proxy that compresses command output for AI coding agents.",
+  "name": "sesshush",
+  "version": "1.0.0",
+  "description": "Sesshush — command output filter for AI coding agents. Compresses noisy CLI output, tracks token savings. Works with opencode, Codex, Claude Code, and more.",
   "type": "module",
   "bin": {
-    "rtk-node": "./bin/rtk-node.js"
+    "sesshush": "./bin/sesshush.js"
   },
   "files": [
     "bin",
@@ -13,9 +13,11 @@
     "install.ps1",
     "uninstall.sh",
     "uninstall.ps1",
+    "vscode-extension/*.vsix",
     "README.md"
   ],
   "scripts": {
+    "build:vsix": "cd vscode-extension && npx --yes @vscode/vsce package --allow-missing-repository 2>nul",
     "test": "node --test"
   },
   "keywords": [
@@ -23,10 +25,23 @@
     "proxy",
     "tokens",
     "ai",
-    "compression"
+    "compression",
+    "opencode",
+    "codex",
+    "claude",
+    "token-savings",
+    "sesshush"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HASSANFARYAD/token-killer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HASSANFARYAD/token-killer/issues"
+  },
+  "homepage": "https://github.com/HASSANFARYAD/token-killer#readme",
   "engines": {
     "node": ">=18"
   }

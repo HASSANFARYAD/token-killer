@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sesshush — Analytics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <span class="text-xl font-bold text-indigo-600">Sesshush</span>
+      <div class="flex gap-1">
+        <a href="/admin/dashboard" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Dashboard</a>
+        <a href="/admin/users" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Users</a>
+        <a href="/admin/tenants" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Tenants</a>
+        <a href="/admin/analytics" class="px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium">Analytics</a>
+        <a href="/admin/audit" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Audit</a>
+        <a href="/admin/settings" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Settings</a>
+      </div>
+    </div>
+    <button onclick="logout()" class="text-sm text-gray-500 hover:text-gray-700">Sign out</button>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-gray-900">Analytics</h1>
+      <div class="flex items-center gap-3">
+        <input type="date" id="from-date" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+        <span class="text-gray-400">to</span>
+        <input type="date" id="to-date" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+        <select id="granularity" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+          <option value="day">Daily</option>
+          <option value="week">Weekly</option>
+          <option value="month">Monthly</option>
+        </select>
+        <button onclick="load()" class="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Apply</button>
+        <a id="export-link" href="/api/analytics/export?format=csv" class="px-4 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Export CSV</a>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Active Users</div>
+        <div id="s-active-users" class="text-3xl font-bold text-gray-900">—</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Commands Executed</div>
+        <div id="s-commands" class="text-3xl font-bold text-gray-900">—</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Tokens Saved</div>
+        <div id="s-tokens" class="text-3xl font-bold text-indigo-600">—</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Cost Saved</div>
+        <div id="s-cost" class="text-3xl font-bold text-green-600">—</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <!-- Trends chart -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">Token Savings Trend</h2>
+        <canvas id="trends-chart" height="200"></canvas>
+      </div>
+
+      <!-- Command breakdown -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">Savings by Command</h2>
+        <canvas id="command-chart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Top users table -->
+    <div class="bg-white rounded-xl border border-gray-200">
+      <div class="px-5 py-4 border-b border-gray-200 flex justify-between items-center">
+        <h2 class="text-base font-semibold text-gray-900">Users</h2>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">User</th>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Department</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">Commands</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">Sessions</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">Tokens Saved</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">Cost Saved</th>
+          </tr>
+        </thead>
+        <tbody id="users-table" class="divide-y divide-gray-100">
+          <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const TOKEN = sessionStorage.getItem('rtk_access_token');
+    let trendsChart, commandChart;
+
+    async function api(path) {
+      const res = await fetch('/api' + path, {
+        credentials: 'include',
+        headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+      });
+      if (res.status === 401) { window.location.href = '/admin/login'; return null; }
+      return res.ok ? res.json() : null;
+    }
+
+    const fmt = {
+      tokens: n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n||0),
+      usd: n => '$' + (n||0).toFixed(2),
+    };
+
+    function qs() {
+      const from = document.getElementById('from-date').value;
+      const to = document.getElementById('to-date').value;
+      const gran = document.getElementById('granularity').value;
+      const p = new URLSearchParams({ granularity: gran });
+      if (from) p.set('from', from);
+      if (to) p.set('to', to);
+      return p;
+    }
+
+    async function load() {
+      const q = qs();
+      const [overview, trends, users, commands] = await Promise.all([
+        api('/analytics/overview?' + q),
+        api('/analytics/trends?' + q),
+        api('/analytics/users?' + q + '&limit=20'),
+        api('/analytics/commands'),
+      ]);
+
+      if (overview) {
+        document.getElementById('s-active-users').textContent = overview.active_users || 0;
+        document.getElementById('s-commands').textContent = (overview.total_commands||0).toLocaleString();
+        document.getElementById('s-tokens').textContent = fmt.tokens(overview.saved_tokens);
+        document.getElementById('s-cost').textContent = fmt.usd(overview.cost_usd);
+      }
+
+      if (trends) {
+        const labels = trends.data.map(r => r.period);
+        const values = trends.data.map(r => r.saved_tokens);
+        if (trendsChart) trendsChart.destroy();
+        trendsChart = new Chart(document.getElementById('trends-chart'), {
+          type: 'line',
+          data: { labels, datasets: [{ label: 'Tokens Saved', data: values, borderColor: '#6366f1', backgroundColor: '#6366f120', fill: true, tension: 0.3 }] },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => fmt.tokens(v) } } } },
+        });
+      }
+
+      if (commands) {
+        const top = commands.data.slice(0, 8);
+        if (commandChart) commandChart.destroy();
+        commandChart = new Chart(document.getElementById('command-chart'), {
+          type: 'doughnut',
+          data: { labels: top.map(r => r.command), datasets: [{ data: top.map(r => r.total_saved), backgroundColor: ['#6366f1','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#64748b'] }] },
+          options: { responsive: true, plugins: { legend: { position: 'bottom' } } },
+        });
+      }
+
+      if (users) {
+        document.getElementById('users-table').innerHTML = users.data.map(u => `
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3"><a href="/admin/users/${u.id}" class="font-medium text-gray-900 hover:text-indigo-600">${u.display_name||u.email}</a><div class="text-xs text-gray-400">${u.email}</div></td>
+            <td class="px-4 py-3 text-gray-500">${u.department||'—'}</td>
+            <td class="px-4 py-3 text-right text-gray-700">${(u.commands_count||0).toLocaleString()}</td>
+            <td class="px-4 py-3 text-right text-gray-700">${u.sessions_count||0}</td>
+            <td class="px-4 py-3 text-right font-medium text-indigo-600">${fmt.tokens(u.saved_tokens)}</td>
+            <td class="px-4 py-3 text-right font-medium text-green-600">${fmt.usd(u.cost_usd)}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">No data</td></tr>';
+      }
+    }
+
+    async function logout() {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      sessionStorage.clear();
+      window.location.href = '/admin/login';
+    }
+
+    // Default date range: last 30 days
+    const now = new Date();
+    const ago = new Date(); ago.setDate(ago.getDate() - 30);
+    document.getElementById('to-date').value = now.toISOString().slice(0, 10);
+    document.getElementById('from-date').value = ago.toISOString().slice(0, 10);
+
+    load();
+  </script>
+</body>
+</html>

@@ -1,13 +1,13 @@
 #!/usr/bin/env sh
 set -eu
 
-if command -v rtk-node >/dev/null 2>&1; then
-  rtk-node uninstall || true
+if command -v sesshush >/dev/null 2>&1; then
+  sesshush uninstall || true
 fi
 
 PREFIX="${PREFIX:-$HOME/.local}"
 if command -v npm >/dev/null 2>&1; then
-  npm uninstall -g rtk-node --prefix "$PREFIX" || npm uninstall -g rtk-node || true
+  npm uninstall -g sesshush --prefix "$PREFIX" || npm uninstall -g sesshush || true
 fi
 
-echo "Removed rtk-node where npm could find it. Remove analytics manually from ~/.local/share/rtk-node if desired."
+echo "Removed sesshush where npm could find it. Remove analytics manually from ~/.local/share/sesshush if desired."

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 function readFiles(args) {
   const files = args.filter((arg) => !arg.startsWith('-'));
-  if (!files.length) return { stdout: '', stderr: 'rtk-node read: missing file\n', status: 2 };
+  if (!files.length) return { stdout: '', stderr: 'sesshush read: missing file\n', status: 2 };
   const chunks = [];
   for (const file of files) {
     try {

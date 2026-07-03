@@ -3,9 +3,19 @@ backend/.env.docker
 *.pyc
 
 node_modules/
+server/node_modules/
+server/data/
 *.vsix
 admin-dashboard/dist/
 
 .ruff_cache
 .pytest_cache
 .venv
+__pycache__/
+
+vscode-extension/$null
+debug.log
+.DS_Store
+
+.claude/settings.local.json
+.npmrc

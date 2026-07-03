@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sesshush — Users</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <span class="text-xl font-bold text-indigo-600">Sesshush</span>
+      <div class="flex gap-1">
+        <a href="/admin/dashboard" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Dashboard</a>
+        <a href="/admin/users" class="px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium">Users</a>
+        <a href="/admin/tenants" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Tenants</a>
+        <a href="/admin/analytics" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Analytics</a>
+        <a href="/admin/audit" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Audit</a>
+        <a href="/admin/settings" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Settings</a>
+      </div>
+    </div>
+    <button onclick="logout()" class="text-sm text-gray-500 hover:text-gray-700">Sign out</button>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-gray-900">Users</h1>
+      <div class="flex gap-2">
+        <a href="/api/analytics/export?format=csv" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Export CSV</a>
+        <button onclick="openCreateModal()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">+ Add User</button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex flex-wrap gap-3">
+      <input type="text" id="search" placeholder="Search by name or email..."
+        class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        oninput="debounce(loadUsers, 300)()">
+      <select id="filter-role" onchange="loadUsers()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none">
+        <option value="">All Roles</option>
+        <option value="super_admin">Super Admin</option>
+        <option value="admin">Admin</option>
+        <option value="manager">Manager</option>
+        <option value="user">User</option>
+        <option value="read_only">Read Only</option>
+      </select>
+      <select id="filter-status" onchange="loadUsers()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none">
+        <option value="">All Statuses</option>
+        <option value="active">Active</option>
+        <option value="disabled">Disabled</option>
+        <option value="invited">Invited</option>
+      </select>
+      <select id="page-size" onchange="loadUsers()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none">
+        <option value="25">25 per page</option>
+        <option value="50">50 per page</option>
+        <option value="100">100 per page</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div id="error-msg" class="hidden p-4 bg-red-50 text-red-700 text-sm border-b border-red-200"></div>
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Name</th>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Email</th>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Role</th>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Tokens Saved</th>
+            <th class="px-4 py-3 text-left font-medium text-gray-600">Last Login</th>
+            <th class="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-table" class="divide-y divide-gray-100">
+          <tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+        </tbody>
+      </table>
+      <div id="pagination" class="px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600"></div>
+    </div>
+  </main>
+
+  <!-- Create User Modal -->
+  <div id="create-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+      <h2 class="text-lg font-bold mb-4">Add User</h2>
+      <div id="modal-error" class="hidden mb-3 p-2 bg-red-50 text-red-700 text-sm rounded"></div>
+      <form id="create-form" class="space-y-3">
+        <input type="email" id="new-email" placeholder="Email *" required class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg">
+        <input type="text" id="new-name" placeholder="Display Name *" required class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg">
+        <input type="text" id="new-dept" placeholder="Department" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg">
+        <select id="new-role" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg">
+          <option value="user">User</option>
+          <option value="read_only">Read Only</option>
+          <option value="manager">Manager</option>
+          <option value="admin">Admin</option>
+        </select>
+        <div class="flex gap-2 pt-2">
+          <button type="submit" class="flex-1 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700">Create &amp; Send Invite</button>
+          <button type="button" onclick="closeCreateModal()" class="flex-1 py-2 border border-gray-300 text-sm text-gray-600 rounded-lg hover:bg-gray-50">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const RTK_TOKEN = sessionStorage.getItem('rtk_access_token');
+    let currentPage = 1;
+
+    async function api(method, path, body) {
+      const res = await fetch('/api' + path, {
+        method, credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...(RTK_TOKEN ? { Authorization: `Bearer ${RTK_TOKEN}` } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (res.status === 401) { window.location.href = '/admin/login'; return null; }
+      return res;
+    }
+
+    async function loadUsers() {
+      const search = document.getElementById('search').value;
+      const role = document.getElementById('filter-role').value;
+      const status = document.getElementById('filter-status').value;
+      const limit = document.getElementById('page-size').value;
+      const qs = new URLSearchParams({ page: currentPage, limit, ...(search && { search }), ...(role && { role }), ...(status && { status }) });
+      const res = await api('GET', '/users?' + qs);
+      if (!res) return;
+      const data = await res.json();
+      renderTable(data);
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('users-table');
+      const roles = { super_admin:'bg-purple-100 text-purple-700', admin:'bg-indigo-100 text-indigo-700', manager:'bg-blue-100 text-blue-700', user:'bg-gray-100 text-gray-700', read_only:'bg-gray-50 text-gray-500' };
+      const statuses = { active:'bg-green-100 text-green-700', disabled:'bg-red-100 text-red-700', invited:'bg-yellow-100 text-yellow-700', pending:'bg-orange-100 text-orange-700', removed:'bg-gray-100 text-gray-500' };
+      const fmtTokens = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n||0);
+
+      tbody.innerHTML = (data.data || []).map(u => `
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 font-medium text-gray-900">
+            <a href="/admin/users/${u.id}" class="hover:text-indigo-600">${u.display_name || '—'}</a>
+          </td>
+          <td class="px-4 py-3 text-gray-600">${u.email}</td>
+          <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-medium ${roles[u.role]||''}">${u.role.replace('_',' ')}</span></td>
+          <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-medium ${statuses[u.status]||''}">${u.status}</span></td>
+          <td class="px-4 py-3 text-gray-600">${fmtTokens(u.total_saved_tokens)}</td>
+          <td class="px-4 py-3 text-gray-500 text-xs">${u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : '—'}</td>
+          <td class="px-4 py-3 text-right">
+            <button onclick="toggleUser(${u.id}, '${u.status}')" class="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 mr-1">
+              ${u.status === 'active' ? 'Deactivate' : 'Activate'}
+            </button>
+            <a href="/admin/users/${u.id}" class="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100">View</a>
+          </td>
+        </tr>
+      `).join('') || '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-400">No users found</td></tr>';
+
+      document.getElementById('pagination').innerHTML = `
+        <span>${data.total} users</span>
+        <div class="flex gap-2">
+          <button onclick="goPage(${currentPage-1})" ${currentPage<=1?'disabled':''} class="px-3 py-1 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-50">←</button>
+          <span>Page ${data.page} of ${data.pages}</span>
+          <button onclick="goPage(${currentPage+1})" ${currentPage>=data.pages?'disabled':''} class="px-3 py-1 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-50">→</button>
+        </div>
+      `;
+    }
+
+    function goPage(p) { currentPage = p; loadUsers(); }
+
+    async function toggleUser(id, status) {
+      const action = status === 'active' ? 'deactivate' : 'activate';
+      if (!confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} this user?`)) return;
+      await api('POST', `/users/${id}/${action}`);
+      loadUsers();
+    }
+
+    function openCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); }
+    function closeCreateModal() { document.getElementById('create-modal').classList.add('hidden'); document.getElementById('create-form').reset(); }
+
+    document.getElementById('create-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await api('POST', '/users', {
+        email: document.getElementById('new-email').value,
+        display_name: document.getElementById('new-name').value,
+        department: document.getElementById('new-dept').value || undefined,
+        role: document.getElementById('new-role').value,
+        send_invite: true,
+      });
+      if (!res) return;
+      if (res.ok) {
+        const data = await res.json();
+        closeCreateModal();
+        loadUsers();
+        if (data.inviteLink) alert('Invite link: ' + data.inviteLink);
+      } else {
+        const err = await res.json();
+        document.getElementById('modal-error').textContent = err.error || 'Failed to create user';
+        document.getElementById('modal-error').classList.remove('hidden');
+      }
+    });
+
+    let debTimer;
+    function debounce(fn, delay) { return () => { clearTimeout(debTimer); debTimer = setTimeout(fn, delay); }; }
+
+    async function logout() {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      sessionStorage.clear();
+      window.location.href = '/admin/login';
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>

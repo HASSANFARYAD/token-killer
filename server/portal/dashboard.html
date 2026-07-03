@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sesshush — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Nav -->
+  <nav class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <span class="text-xl font-bold text-indigo-600">RTK Node</span>
+      <div class="flex gap-1">
+        <a href="/admin/dashboard" class="px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium">Dashboard</a>
+        <a href="/admin/users" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Users</a>
+        <a href="/admin/tenants" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Tenants</a>
+        <a href="/admin/analytics" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Analytics</a>
+        <a href="/admin/audit" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Audit</a>
+        <a href="/admin/settings" class="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 text-sm font-medium">Settings</a>
+      </div>
+    </div>
+    <button onclick="logout()" class="text-sm text-gray-500 hover:text-gray-700">Sign out</button>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Total Users</div>
+        <div id="stat-total-users" class="text-3xl font-bold text-gray-900">—</div>
+        <div id="stat-active-users" class="text-xs text-green-600 mt-1">— active</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Tokens Saved</div>
+        <div id="stat-tokens" class="text-3xl font-bold text-indigo-600">—</div>
+        <div id="stat-commands" class="text-xs text-gray-500 mt-1">— commands</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Cost Saved</div>
+        <div id="stat-cost" class="text-3xl font-bold text-green-600">—</div>
+        <div class="text-xs text-gray-500 mt-1">at $0.003/1k tokens</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="text-sm text-gray-500 mb-1">Tenants</div>
+        <div id="stat-tenants" class="text-3xl font-bold text-gray-900">—</div>
+        <div id="stat-tenants-connected" class="text-xs text-green-600 mt-1">— connected</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Activity chart -->
+      <div class="md:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">Token Savings — Last 14 Days</h2>
+        <canvas id="activity-chart" height="160"></canvas>
+      </div>
+
+      <!-- Top users -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <h2 class="text-base font-semibold text-gray-900 mb-4">Top Users (30 days)</h2>
+        <div id="top-users" class="space-y-3">
+          <div class="text-sm text-gray-400">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const Sesshush = {
+      token: sessionStorage.getItem('rtk_access_token'),
+      async api(path) {
+        const res = await fetch('/api' + path, {
+          headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+          credentials: 'include',
+        });
+        if (res.status === 401) { window.location.href = '/admin/login'; return null; }
+        return res.ok ? res.json() : null;
+      },
+      fmt: {
+        tokens: (n) => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n||0),
+        usd: (n) => '$' + (n||0).toFixed(2),
+      }
+    };
+
+    async function load() {
+      const data = await Sesshush.api('/admin/dashboard');
+      if (!data) return;
+
+      document.getElementById('stat-total-users').textContent = data.users.total;
+      document.getElementById('stat-active-users').textContent = data.users.active + ' active';
+      document.getElementById('stat-tokens').textContent = Sesshush.fmt.tokens(data.tokens.total_saved_tokens);
+      document.getElementById('stat-commands').textContent = (data.tokens.total_commands || 0).toLocaleString() + ' commands';
+      document.getElementById('stat-cost').textContent = Sesshush.fmt.usd(data.tokens.total_cost_usd);
+      document.getElementById('stat-tenants').textContent = data.tenants.total;
+      document.getElementById('stat-tenants-connected').textContent = data.tenants.connected + ' connected';
+
+      // Top users
+      const topEl = document.getElementById('top-users');
+      topEl.innerHTML = (data.top_users || []).map((u, i) => `
+        <div class="flex items-center gap-3">
+          <span class="text-sm font-medium text-gray-400 w-4">${i+1}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-gray-900 truncate">${u.display_name || u.email}</div>
+            <div class="text-xs text-gray-500">${Sesshush.fmt.tokens(u.saved_tokens)} tokens</div>
+          </div>
+        </div>
+      `).join('') || '<div class="text-sm text-gray-400">No data yet</div>';
+
+      // Chart
+      const labels = (data.recent_activity || []).map(r => r.date.slice(5));
+      const values = (data.recent_activity || []).map(r => r.saved_tokens || 0);
+      new Chart(document.getElementById('activity-chart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label: 'Tokens Saved', data: values, backgroundColor: '#6366f1', borderRadius: 4 }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => Sesshush.fmt.tokens(v) } } },
+        },
+      });
+    }
+
+    async function logout() {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      sessionStorage.clear();
+      window.location.href = '/admin/login';
+    }
+
+    load();
+  </script>
+</body>
+</html>
