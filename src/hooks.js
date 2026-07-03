@@ -3,37 +3,37 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const START = '# >>> noisegate hook >>>';
-const END = '# <<< noisegate hook <<<';
+const START = '# >>> sesshush hook >>>';
+const END = '# <<< sesshush hook <<<';
 const POSIX_COMMANDS = ['git', 'rg', 'grep', 'pytest', 'npm', 'ls', 'find', 'cat'];
 const POWERSHELL_COMMANDS = ['git', 'rg', 'grep', 'pytest', 'npm'];
-const NOISEGATE_MD = `# NoiseGate
+const SESSHUSH_MD = `# Sesshush
 
-Use \`noisegate\` for shell commands that may produce noisy output.
+Use \`sesshush\` for shell commands that may produce noisy output.
 
 Preferred command forms:
-- \`noisegate git status\`
-- \`noisegate git diff\`
-- \`noisegate git log --oneline -10\`
-- \`noisegate ls .\`
-- \`noisegate find "*.js" .\`
-- \`noisegate read path/to/file\`
-- \`noisegate rg "pattern" .\`
-- \`noisegate pytest -q\`
-- \`noisegate npm test\`
+- \`sesshush git status\`
+- \`sesshush git diff\`
+- \`sesshush git log --oneline -10\`
+- \`sesshush ls .\`
+- \`sesshush find "*.js" .\`
+- \`sesshush read path/to/file\`
+- \`sesshush rg "pattern" .\`
+- \`sesshush pytest -q\`
+- \`sesshush npm test\`
 
-Use \`noisegate -v <command>\` only when raw output is required.
+Use \`sesshush -v <command>\` only when raw output is required.
 
-Set \`NOISEGATE_SESSION_ID\` (or \`RTK_SESSION_ID\`, \`OPENCODE_SESSION_ID\`, \`CLAUDE_SESSION_ID\`, \`CODEX_SESSION_ID\`, \`TERM_SESSION_ID\`) to group command runs into a session for token tracking.
+Set \`SESSHUSH_SESSION_ID\` (or \`RTK_SESSION_ID\`, \`OPENCODE_SESSION_ID\`, \`CLAUDE_SESSION_ID\`, \`CODEX_SESSION_ID\`, \`TERM_SESSION_ID\`) to group command runs into a session for token tracking.
 `;
 
-const AGENTS_BLOCK = `# NoiseGate Command Output Compression
+const AGENTS_BLOCK = `# Sesshush Command Output Compression
 
-When running shell commands, prefer prefixing noisy commands with \`noisegate\` so output is compact before it enters the model context. Use normal commands only when the unfiltered output is required.
+When running shell commands, prefer prefixing noisy commands with \`sesshush\` so output is compact before it enters the model context. Use normal commands only when the unfiltered output is required.
 
-NoiseGate supports all AI coding agents: opencode, Claude Code, Codex, Cursor, and any terminal-based agent. Session tracking works via \`NOISEGATE_SESSION_ID\`, \`RTK_SESSION_ID\`, \`OPENCODE_SESSION_ID\`, \`CLAUDE_SESSION_ID\`, or \`CODEX_SESSION_ID\` environment variables.
+Sesshush supports all AI coding agents: opencode, Claude Code, Codex, Cursor, and any terminal-based agent. Session tracking works via \`SESSHUSH_SESSION_ID\`, \`RTK_SESSION_ID\`, \`OPENCODE_SESSION_ID\`, \`CLAUDE_SESSION_ID\`, or \`CODEX_SESSION_ID\` environment variables.
 
-Reference: @NOISEGATE.md
+Reference: @SESSHUSH.md
 `;
 
 const AGENT_DIRS = [
@@ -46,13 +46,13 @@ function hookBlock(shell) {
   if (shell === 'fish') {
     return [
       START,
-      'set -gx NOISEGATE_HOOK 1',
+      'set -gx SESSHUSH_HOOK 1',
       ...POSIX_COMMANDS.map((cmd) => [
         `function ${cmd}`,
-        '  if test -n "$NOISEGATE_ACTIVE"',
+        '  if test -n "$SESSHUSH_ACTIVE"',
         `    command ${cmd} $argv`,
         '  else',
-        `    noisegate ${cmd} $argv`,
+        `    sesshush ${cmd} $argv`,
         '  end',
         'end'
       ].join('\n')),
@@ -70,13 +70,13 @@ function hookBlock(shell) {
     };
     return [
       START,
-      '$env:NOISEGATE_HOOK = "1"',
+      '$env:SESSHUSH_HOOK = "1"',
       ...POWERSHELL_COMMANDS.map((cmd) => [
         `function global:${cmd} {`,
-        '  if ($env:NOISEGATE_ACTIVE) {',
+        '  if ($env:SESSHUSH_ACTIVE) {',
         `    & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
         '  } else {',
-        `    & noisegate ${cmd} @args`,
+        `    & sesshush ${cmd} @args`,
         '  }',
         '}'
       ].join('\n')),
@@ -86,13 +86,13 @@ function hookBlock(shell) {
 
   return [
     START,
-    'export NOISEGATE_HOOK=1',
+    'export SESSHUSH_HOOK=1',
     ...POSIX_COMMANDS.map((cmd) => [
       `${cmd}() {`,
-      '  if [ -n "$NOISEGATE_ACTIVE" ]; then',
+      '  if [ -n "$SESSHUSH_ACTIVE" ]; then',
       `    command ${cmd} "$@"`,
       '  else',
-      `    noisegate ${cmd} "$@"`,
+      `    sesshush ${cmd} "$@"`,
       '  fi',
       '}'
     ].join('\n')),
@@ -135,30 +135,30 @@ export function installHook({ shell = detectShell(), global = false, hookOnly = 
 
 function installAgentInstructionsForDir(root) {
   fs.mkdirSync(root, { recursive: true });
-  const noisegatePath = path.join(root, 'NOISEGATE.md');
+  const sesshushPath = path.join(root, 'SESSHUSH.md');
   const agentsPath = path.join(root, 'AGENTS.md');
-  fs.writeFileSync(noisegatePath, NOISEGATE_MD);
+  fs.writeFileSync(sesshushPath, SESSHUSH_MD);
 
   const current = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf8') : '';
-  const next = current.includes('NoiseGate Command Output Compression')
+  const next = current.includes('Sesshush Command Output Compression')
     ? current
     : `${current.trimEnd()}${current.trim() ? '\n\n' : ''}${AGENTS_BLOCK}`;
   fs.writeFileSync(agentsPath, next);
-  return { noisegatePath, agentsPath };
+  return { sesshushPath, agentsPath };
 }
 
 function uninstallAgentInstructionsForDir(root) {
-  const noisegatePath = path.join(root, 'NOISEGATE.md');
+  const sesshushPath = path.join(root, 'SESSHUSH.md');
   const agentsPath = path.join(root, 'AGENTS.md');
-  if (fs.existsSync(noisegatePath)) fs.unlinkSync(noisegatePath);
+  if (fs.existsSync(sesshushPath)) fs.unlinkSync(sesshushPath);
   if (fs.existsSync(agentsPath)) {
     const current = fs.readFileSync(agentsPath, 'utf8');
     const next = current
-      .replace(/# NoiseGate Command Output Compression[\s\S]*?Reference: @NOISEGATE\.md\n?/g, '')
+      .replace(/# Sesshush Command Output Compression[\s\S]*?Reference: @SESSHUSH\.md\n?/g, '')
       .trimEnd();
     fs.writeFileSync(agentsPath, next ? `${next}\n` : '');
   }
-  return { noisegatePath, agentsPath };
+  return { sesshushPath, agentsPath };
 }
 
 export function installAgentInstructions({ global = false, agents = AGENT_DIRS.map(a => a.name) } = {}) {
@@ -193,14 +193,14 @@ export function uninstallCodexInstructions({ global = false } = {}) {
   return uninstallAgentInstructions({ global, agents: ['codex'] });
 }
 
-const VSCODE_EXTENSION_ID = 'noisegate-token-savings';
+const VSCODE_EXTENSION_ID = 'sesshush-token-savings';
 
 function vsixPath() {
   const dir = path.dirname(new URL(import.meta.url).pathname);
   const parent = path.resolve(dir, '..');
   const candidates = [
     path.join(parent, 'vscode-extension', '*.vsix'),
-    path.join(parent, 'vscode-extension', `noisegate-token-savings-*.vsix`)
+    path.join(parent, 'vscode-extension', `sesshush-token-savings-*.vsix`)
   ];
   return candidates;
 }

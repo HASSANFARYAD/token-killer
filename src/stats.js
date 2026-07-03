@@ -20,6 +20,7 @@ function emptyDb() {
 }
 
 const AGENT_SESSION_IDS = [
+  'SESSHUSH_SESSION_ID',
   'NOISEGATE_SESSION_ID',
   'RTK_SESSION_ID',
   'OPENCODE_SESSION_ID',
@@ -37,6 +38,7 @@ function sessionId() {
 }
 
 const AGENT_LABEL_KEYS = [
+  'SESSHUSH_SESSION_LABEL',
   'NOISEGATE_SESSION_LABEL',
   'OPENCODE_SESSION_LABEL',
   'RTK_SESSION_LABEL',
@@ -181,7 +183,7 @@ export function formatGain() {
   const rows = formatCommandRows(snapshot.total.commands);
 
   return [
-    `NoiseGate token savings`,
+    `Sesshush token savings`,
     `runs: ${snapshot.total.runs}`,
     `saved: ${snapshot.total.savedTokens} tokens (${snapshot.total.savedPercent.toFixed(1)}%)`,
     `original: ${snapshot.total.originalTokens} tokens`,
@@ -196,7 +198,7 @@ export function formatSessionGain(id = sessionId()) {
   const rows = formatCommandRows(snapshot.session.commands);
 
   return [
-    `NoiseGate session token savings`,
+    `Sesshush session token savings`,
     `session: ${snapshot.session.label}`,
     `runs: ${snapshot.session.runs}`,
     `saved: ${snapshot.session.savedTokens} tokens (${snapshot.session.savedPercent.toFixed(1)}%)`,

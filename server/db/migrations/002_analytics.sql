@@ -1,4 +1,4 @@
--- NoiseGate Enterprise — Analytics Views
+-- Sesshush Enterprise — Analytics Views
 -- Migration 002
 
 -- Aggregated view: per-user totals across all time

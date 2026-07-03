@@ -23,41 +23,41 @@ export const config = {
   port: optionalInt('PORT', 3000),
   host: optional('HOST', '0.0.0.0'),
 
-  dbPath: optional('NOISEGATE_DB_PATH', optional('RTK_DB_PATH', path.join(__dirname, '../data/noisegate.db'))),
+  dbPath: optional('SESSHUSH_DB_PATH', optional('NOISEGATE_DB_PATH', optional('RTK_DB_PATH', path.join(__dirname, '../data/sesshush.db')))),
 
   // Must be 64 hex chars (32 bytes). Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  encryptionKey: process.env.NOISEGATE_ENCRYPTION_KEY || process.env.RTK_ENCRYPTION_KEY || null,
+  encryptionKey: process.env.SESSHUSH_ENCRYPTION_KEY || process.env.NOISEGATE_ENCRYPTION_KEY || process.env.RTK_ENCRYPTION_KEY || null,
 
   jwt: {
-    secret: optional('NOISEGATE_JWT_SECRET', optional('RTK_JWT_SECRET', 'change-me-in-production-use-random-32-chars')),
-    accessExpiresIn: optional('NOISEGATE_JWT_ACCESS_EXPIRES', optional('RTK_JWT_ACCESS_EXPIRES', '15m')),
-    refreshExpiresIn: optional('NOISEGATE_JWT_REFRESH_EXPIRES', optional('RTK_JWT_REFRESH_EXPIRES', '7d')),
-    issuer: optional('NOISEGATE_JWT_ISSUER', optional('RTK_JWT_ISSUER', 'noisegate')),
+    secret: optional('SESSHUSH_JWT_SECRET', optional('NOISEGATE_JWT_SECRET', optional('RTK_JWT_SECRET', 'change-me-in-production-use-random-32-chars'))),
+    accessExpiresIn: optional('SESSHUSH_JWT_ACCESS_EXPIRES', optional('NOISEGATE_JWT_ACCESS_EXPIRES', optional('RTK_JWT_ACCESS_EXPIRES', '15m'))),
+    refreshExpiresIn: optional('SESSHUSH_JWT_REFRESH_EXPIRES', optional('NOISEGATE_JWT_REFRESH_EXPIRES', optional('RTK_JWT_REFRESH_EXPIRES', '7d'))),
+    issuer: optional('SESSHUSH_JWT_ISSUER', optional('NOISEGATE_JWT_ISSUER', optional('RTK_JWT_ISSUER', 'sesshush'))),
   },
 
   session: {
-    cookieName: optional('NOISEGATE_COOKIE_NAME', optional('RTK_COOKIE_NAME', 'noisegate_session')),
+    cookieName: optional('SESSHUSH_COOKIE_NAME', optional('NOISEGATE_COOKIE_NAME', optional('RTK_COOKIE_NAME', 'sesshush_session'))),
     secure: optional('NODE_ENV', 'development') === 'production',
-    sameSite: optional('NOISEGATE_COOKIE_SAMESITE', optional('RTK_COOKIE_SAMESITE', 'strict')),
+    sameSite: optional('SESSHUSH_COOKIE_SAMESITE', optional('NOISEGATE_COOKIE_SAMESITE', optional('RTK_COOKIE_SAMESITE', 'strict'))),
   },
 
   microsoft: {
-    clientId: optional('NOISEGATE_MS_CLIENT_ID', optional('RTK_MS_CLIENT_ID', '')),
-    clientSecret: optional('NOISEGATE_MS_CLIENT_SECRET', optional('RTK_MS_CLIENT_SECRET', '')),
-    tenantId: optional('NOISEGATE_MS_TENANT_ID', optional('RTK_MS_TENANT_ID', 'common')),
-    redirectUri: optional('NOISEGATE_MS_REDIRECT_URI', optional('RTK_MS_REDIRECT_URI', 'http://localhost:3000/api/auth/microsoft/callback')),
+    clientId: optional('SESSHUSH_MS_CLIENT_ID', optional('NOISEGATE_MS_CLIENT_ID', optional('RTK_MS_CLIENT_ID', ''))),
+    clientSecret: optional('SESSHUSH_MS_CLIENT_SECRET', optional('NOISEGATE_MS_CLIENT_SECRET', optional('RTK_MS_CLIENT_SECRET', ''))),
+    tenantId: optional('SESSHUSH_MS_TENANT_ID', optional('NOISEGATE_MS_TENANT_ID', optional('RTK_MS_TENANT_ID', 'common'))),
+    redirectUri: optional('SESSHUSH_MS_REDIRECT_URI', optional('NOISEGATE_MS_REDIRECT_URI', optional('RTK_MS_REDIRECT_URI', 'http://localhost:3000/api/auth/microsoft/callback'))),
     scopes: ['openid', 'profile', 'email', 'User.Read'],
   },
 
   rateLimit: {
-    windowMs: optionalInt('NOISEGATE_RATE_LIMIT_WINDOW_MS', optionalInt('RTK_RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000)),
-    max: optionalInt('NOISEGATE_RATE_LIMIT_MAX', optionalInt('RTK_RATE_LIMIT_MAX', 100)),
-    authMax: optionalInt('NOISEGATE_RATE_LIMIT_AUTH_MAX', optionalInt('RTK_RATE_LIMIT_AUTH_MAX', 10)),
+    windowMs: optionalInt('SESSHUSH_RATE_LIMIT_WINDOW_MS', optionalInt('NOISEGATE_RATE_LIMIT_WINDOW_MS', optionalInt('RTK_RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000))),
+    max: optionalInt('SESSHUSH_RATE_LIMIT_MAX', optionalInt('NOISEGATE_RATE_LIMIT_MAX', optionalInt('RTK_RATE_LIMIT_MAX', 100))),
+    authMax: optionalInt('SESSHUSH_RATE_LIMIT_AUTH_MAX', optionalInt('NOISEGATE_RATE_LIMIT_AUTH_MAX', optionalInt('RTK_RATE_LIMIT_AUTH_MAX', 10))),
   },
 
-  baseUrl: optional('NOISEGATE_BASE_URL', optional('RTK_BASE_URL', 'http://localhost:3000')),
+  baseUrl: optional('SESSHUSH_BASE_URL', optional('NOISEGATE_BASE_URL', optional('RTK_BASE_URL', 'http://localhost:3000'))),
 
-  logLevel: optional('NOISEGATE_LOG_LEVEL', optional('RTK_LOG_LEVEL', 'info')),
+  logLevel: optional('SESSHUSH_LOG_LEVEL', optional('NOISEGATE_LOG_LEVEL', optional('RTK_LOG_LEVEL', 'info'))),
 
   isProduction() {
     return this.env === 'production';
@@ -66,10 +66,10 @@ export const config = {
   validate() {
     const warnings = [];
     if (this.jwt.secret === 'change-me-in-production-use-random-32-chars') {
-      warnings.push('NOISEGATE_JWT_SECRET is using the default insecure value. Set a random secret in production.');
+      warnings.push('SESSHUSH_JWT_SECRET is using the default insecure value. Set a random secret in production.');
     }
     if (!this.encryptionKey) {
-      warnings.push('NOISEGATE_ENCRYPTION_KEY is not set. Tenant client secrets cannot be stored securely.');
+      warnings.push('SESSHUSH_ENCRYPTION_KEY is not set. Tenant client secrets cannot be stored securely.');
     }
     if (this.isProduction() && !this.session.secure) {
       warnings.push('Cookies are not marked Secure. Set NODE_ENV=production to enable.');

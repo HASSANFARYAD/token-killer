@@ -10,7 +10,7 @@ import fs from 'node:fs';
 let testDbPath;
 
 export function setupTestDb() {
-  testDbPath = path.join(os.tmpdir(), `rtk-test-${Date.now()}.db`);
+  testDbPath = path.join(os.tmpdir(), `sesshush-server-test-${Date.now()}.db`);
   process.env.RTK_DB_PATH = testDbPath;
   process.env.RTK_JWT_SECRET = 'test-secret-do-not-use-in-production';
   process.env.RTK_ENCRYPTION_KEY = 'a'.repeat(64);

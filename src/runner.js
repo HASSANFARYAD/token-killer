@@ -7,7 +7,7 @@ export function runCommand(command, args) {
     encoding: null,
     maxBuffer: 64 * 1024 * 1024,
     shell: process.platform === 'win32',
-    env: { ...process.env, NOISEGATE_ACTIVE: '1' }
+    env: { ...process.env, SESSHUSH_ACTIVE: '1' }
   });
   const ended = process.hrtime.bigint();
   const durationMs = Number(ended - started) / 1_000_000;

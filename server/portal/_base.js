@@ -1,10 +1,10 @@
 // Shared JS for all portal pages — included inline in each page
 
-const NoiseGate = {
+const Sesshush = {
   token: null,
 
   async api(method, path, body) {
-    if (!this.token) this.token = sessionStorage.getItem('noisegate_access_token');
+    if (!this.token) this.token = sessionStorage.getItem('sesshush_access_token');
 
     let res = await fetch('/api' + path, {
       method,
@@ -22,7 +22,7 @@ const NoiseGate = {
       if (refresh.ok) {
         const data = await refresh.json();
         this.token = data.accessToken;
-        sessionStorage.setItem('noisegate_access_token', data.accessToken);
+        sessionStorage.setItem('sesshush_access_token', data.accessToken);
         // Retry original request
         res = await fetch('/api' + path, {
           method,
@@ -44,10 +44,10 @@ const NoiseGate = {
     return res.json();
   },
 
-  get: (path) => NoiseGate.api('GET', path),
-  post: (path, body) => NoiseGate.api('POST', path, body),
-  put: (path, body) => NoiseGate.api('PUT', path, body),
-  delete: (path) => NoiseGate.api('DELETE', path),
+  get: (path) => Sesshush.api('GET', path),
+  post: (path, body) => Sesshush.api('POST', path, body),
+  put: (path, body) => Sesshush.api('PUT', path, body),
+  delete: (path) => Sesshush.api('DELETE', path),
 
   fmt: {
     tokens: (n) => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n||0),

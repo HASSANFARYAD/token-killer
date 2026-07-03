@@ -1,6 +1,6 @@
-# NoiseGate
+# Sesshush
 
-`noisegate` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It compresses command output before it enters your AI agent's context, saving tokens and reducing noise.
+`sesshush` is a thin command-line proxy that runs a real command, filters noisy output, and appends metadata useful for AI coding agents. It compresses command output before it enters your AI agent's context, saving tokens and reducing noise.
 
 Supports **opencode**, **Codex (Amazon Q Developer CLI)**, **Claude Code**, and any terminal-based AI agent.
 
@@ -9,25 +9,25 @@ Supports **opencode**, **Codex (Amazon Q Developer CLI)**, **Claude Code**, and 
 Everything comes in a single npm package — CLI + VS Code extension included.
 
 ```sh
-npm install -g noisegate
-noisegate init -g --all-agents
+npm install -g sesshush
+sesshush init -g --all-agents
 ```
 
 That's it. One install command. The `init` step:
-- Installs shell hooks so common commands auto-pipe through `noisegate`
+- Installs shell hooks so common commands auto-pipe through `sesshush`
 - Writes agent instructions for opencode, Codex, and Claude Code
 - Auto-detects VS Code and installs the status-bar extension
 
 One-liner for Linux/macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/has-san/noisegate/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/has-san/sesshush/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/has-san/noisegate/main/install.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/has-san/sesshush/main/install.ps1 -UseBasicParsing | iex
 ```
 
 For local development:
@@ -35,50 +35,50 @@ For local development:
 ```sh
 npm install
 npm link
-noisegate init -g --all-agents
+sesshush init -g --all-agents
 ```
 
-To skip VS Code extension install: `noisegate init -g --all-agents --no-vscode`
+To skip VS Code extension install: `sesshush init -g --all-agents --no-vscode`
 
 ## Usage
 
 ```sh
-noisegate git status
-noisegate git diff
-noisegate rg "TODO" src
-noisegate pytest -q
-noisegate npm test
+sesshush git status
+sesshush git diff
+sesshush rg "TODO" src
+sesshush pytest -q
+sesshush npm test
 ```
 
 Debug with raw output:
 
 ```sh
-noisegate -v pytest -q
+sesshush -v pytest -q
 ```
 
 Strip color:
 
 ```sh
-noisegate --no-colors git diff
+sesshush --no-colors git diff
 ```
 
 ## Shell Hook
 
-Install wrapper functions to auto-pipe commands through NoiseGate:
+Install wrapper functions to auto-pipe commands through Sesshush:
 
 ```sh
-noisegate init -g
+sesshush init -g
 ```
 
 For AI coding agents:
 
 ```sh
-noisegate init -g --codex       # Amazon Q Developer CLI (Codex)
-noisegate init -g --opencode    # opencode AI
-noisegate init -g --all-agents  # All supported agents
+sesshush init -g --codex       # Amazon Q Developer CLI (Codex)
+sesshush init -g --opencode    # opencode AI
+sesshush init -g --all-agents  # All supported agents
 ```
 
-On native Windows, agent mode writes `AGENTS.md` and `NOISEGATE.md` instructions. Use WSL for Bash-level auto-rewrite.
+On native Windows, agent mode writes `AGENTS.md` and `SESSHUSH.md` instructions. Use WSL for Bash-level auto-rewrite.
 
 This updates the detected profile:
 
@@ -90,7 +90,7 @@ This updates the detected profile:
 Remove the hook:
 
 ```sh
-noisegate uninstall
+sesshush uninstall
 ```
 
 Or run the uninstall helper:
@@ -99,7 +99,7 @@ Or run the uninstall helper:
 ./uninstall.sh
 ```
 
-The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids recursive invocation with `NOISEGATE_ACTIVE`.
+The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids recursive invocation with `SESSHUSH_ACTIVE`.
 
 ## Filters
 
@@ -114,7 +114,7 @@ The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids rec
 Config lives at:
 
 ```text
-~/.config/noisegate/config.json
+~/.config/sesshush/config.json
 ```
 
 Defaults:
@@ -139,49 +139,50 @@ Telemetry is local only. No data is sent externally by default.
 Show approximate saved tokens:
 
 ```sh
-noisegate gain
+sesshush gain
 ```
 
 Show savings for the current chat/session:
 
 ```sh
-noisegate session
-noisegate status --json
+sesshush session
+sesshush status --json
 ```
 
-`noisegate` groups session analytics by session ID environment variables. It detects sessions for all AI coding agents automatically:
+`sesshush` groups session analytics by session ID environment variables. It detects sessions for all AI coding agents automatically:
 
 | Priority | Env Variable | Agent |
 |---|---|---|
-| 1 | `NOISEGATE_SESSION_ID` | NoiseGate-native |
-| 2 | `RTK_SESSION_ID` | Legacy RTK compat |
-| 3 | `OPENCODE_SESSION_ID` | opencode AI |
-| 4 | `CLAUDE_SESSION_ID` | Claude Code |
-| 5 | `CODEX_SESSION_ID` | Amazon Q Developer CLI (Codex) |
-| 6 | `TERM_SESSION_ID` | Terminal session |
-| 7 | (username:cwd) | Fallback |
+| 1 | `SESSHUSH_SESSION_ID` | Sesshush-native |
+| 2 | `NOISEGATE_SESSION_ID` | Legacy noisegate compat |
+| 3 | `RTK_SESSION_ID` | Legacy RTK compat |
+| 4 | `OPENCODE_SESSION_ID` | opencode AI |
+| 5 | `CLAUDE_SESSION_ID` | Claude Code |
+| 6 | `CODEX_SESSION_ID` | Amazon Q Developer CLI (Codex) |
+| 7 | `TERM_SESSION_ID` | Terminal session |
+| 8 | (username:cwd) | Fallback |
 
 This lets any CLI wrapper, editor integration, or VS Code extension show savings for the active chat:
 
 ```sh
-export NOISEGATE_SESSION_ID="chat-$(date +%s)"
-export NOISEGATE_SESSION_LABEL="Current chat"
+export SESSHUSH_SESSION_ID="chat-$(date +%s)"
+export SESSHUSH_SESSION_LABEL="Current chat"
 ```
 
 PowerShell:
 
 ```powershell
-$env:NOISEGATE_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
-$env:NOISEGATE_SESSION_LABEL = "Current chat"
+$env:SESSHUSH_SESSION_ID = "chat-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+$env:SESSHUSH_SESSION_LABEL = "Current chat"
 ```
 
 For status bars and editor integrations, poll:
 
 ```sh
-noisegate status --json
+sesshush status --json
 ```
 
-The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `NOISEGATE_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `noisegate status --json`.
+The JSON contains `session.savedTokens`, `session.savedPercent`, and `total.savedTokens`. A VS Code extension can set `SESSHUSH_SESSION_ID` before spawning an agent terminal, then update a status-bar item from `sesshush status --json`.
 
 A VS Code status-bar extension lives in:
 
@@ -189,12 +190,12 @@ A VS Code status-bar extension lives in:
 vscode-extension/
 ```
 
-It polls `noisegate status --json` automatically and includes `NoiseGate: Start Agent Terminal` for launching opencode, Codex, Claude Code, or any CLI agent with session tracking enabled.
+It polls `sesshush status --json` automatically and includes `Sesshush: Start Agent Terminal` for launching opencode, Codex, Claude Code, or any CLI agent with session tracking enabled.
 
 Analytics are stored locally in:
 
 ```text
-~/.local/share/noisegate/analytics.json
+~/.local/share/sesshush/analytics.json
 ```
 
 Token counts are estimated at roughly one token per four characters to avoid native dependencies. A tokenizer package can be added later behind the same analytics interface.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NoiseGate — Dashboard</title>
+  <title>Sesshush — Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
@@ -69,7 +69,7 @@
   </main>
 
   <script>
-    const NoiseGate = {
+    const Sesshush = {
       token: sessionStorage.getItem('rtk_access_token'),
       async api(path) {
         const res = await fetch('/api' + path, {
@@ -86,14 +86,14 @@
     };
 
     async function load() {
-      const data = await NoiseGate.api('/admin/dashboard');
+      const data = await Sesshush.api('/admin/dashboard');
       if (!data) return;
 
       document.getElementById('stat-total-users').textContent = data.users.total;
       document.getElementById('stat-active-users').textContent = data.users.active + ' active';
-      document.getElementById('stat-tokens').textContent = NoiseGate.fmt.tokens(data.tokens.total_saved_tokens);
+      document.getElementById('stat-tokens').textContent = Sesshush.fmt.tokens(data.tokens.total_saved_tokens);
       document.getElementById('stat-commands').textContent = (data.tokens.total_commands || 0).toLocaleString() + ' commands';
-      document.getElementById('stat-cost').textContent = NoiseGate.fmt.usd(data.tokens.total_cost_usd);
+      document.getElementById('stat-cost').textContent = Sesshush.fmt.usd(data.tokens.total_cost_usd);
       document.getElementById('stat-tenants').textContent = data.tenants.total;
       document.getElementById('stat-tenants-connected').textContent = data.tenants.connected + ' connected';
 
@@ -104,7 +104,7 @@
           <span class="text-sm font-medium text-gray-400 w-4">${i+1}</span>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium text-gray-900 truncate">${u.display_name || u.email}</div>
-            <div class="text-xs text-gray-500">${NoiseGate.fmt.tokens(u.saved_tokens)} tokens</div>
+            <div class="text-xs text-gray-500">${Sesshush.fmt.tokens(u.saved_tokens)} tokens</div>
           </div>
         </div>
       `).join('') || '<div class="text-sm text-gray-400">No data yet</div>';
@@ -121,7 +121,7 @@
         options: {
           responsive: true,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { callback: v => NoiseGate.fmt.tokens(v) } } },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => Sesshush.fmt.tokens(v) } } },
         },
       });
     }

@@ -63,20 +63,20 @@ function parse(argv) {
 export const parseForTest = parse;
 
 function help() {
-  return `noisegate - thin command output proxy
+  return `sesshush - thin command output proxy
 
 Usage:
-  noisegate <command> [args...]
-  noisegate init [-g] [--hook-only] [--no-vscode]
-  noisegate init -g --codex
-  noisegate init -g --opencode
-  noisegate init -g --all-agents
-  noisegate init -g --uninstall
-  noisegate uninstall
-  noisegate gain
-  noisegate session [--json]
-  noisegate status [--json]
-  noisegate config
+  sesshush <command> [args...]
+  sesshush init [-g] [--hook-only] [--no-vscode]
+  sesshush init -g --codex
+  sesshush init -g --opencode
+  sesshush init -g --all-agents
+  sesshush init -g --uninstall
+  sesshush uninstall
+  sesshush gain
+  sesshush session [--json]
+  sesshush status [--json]
+  sesshush config
 
 Flags:
   --no-colors       Strip ANSI color codes from output
@@ -85,12 +85,12 @@ Flags:
                     Use more aggressive truncation and shorter summaries
 
 Agent init flags:
-  --codex           Install NoiseGate instructions for Codex AI
-  --opencode        Install NoiseGate instructions for opencode AI
-  --all-agents      Install NoiseGate instructions for all supported agents
+  --codex           Install Sesshush instructions for Codex AI
+  --opencode        Install Sesshush instructions for opencode AI
+  --all-agents      Install Sesshush instructions for all supported agents
   --no-vscode       Skip auto-install of VS Code extension
 
-Note: \`noisegate init -g --all-agents\` installs everything in one step:
+Note: \`sesshush init -g --all-agents\` installs everything in one step:
   shell hooks + agent instructions + VS Code extension (if VS Code detected).
 `;
 }
@@ -103,7 +103,7 @@ function metadata({ command, args, result, original, compressed, truncated }) {
   const saved = originalBytes ? ((Math.max(0, originalBytes - compressedBytes) / originalBytes) * 100).toFixed(1) : '0.0';
   return [
     '',
-    '--- noisegate metadata ---',
+    '--- sesshush metadata ---',
     `command: ${[command, ...args].join(' ')}`,
     `exit_code: ${result.status}`,
     `duration_ms: ${result.durationMs.toFixed(1)}`,
@@ -132,7 +132,7 @@ export async function main(argv) {
       if (vscode.uninstalled) console.log('Uninstalled VS Code extension');
       else if (!vscode.reason?.includes('not found')) console.log(`VS Code extension: ${vscode.reason || 'skipped'}`);
       for (const result of agents) {
-        console.log(`Removed agent files from ${result.agent}: ${result.noisegatePath}`);
+        console.log(`Removed agent files from ${result.agent}: ${result.sesshushPath}`);
       }
       return;
     }
@@ -148,13 +148,13 @@ export async function main(argv) {
     if (flags.agents.length) {
       const results = installAgentInstructions({ global: flags.global, agents: flags.agents });
       for (const result of results) {
-        console.log(`Installed NoiseGate instructions for ${result.agent} in ${result.noisegatePath}`);
+        console.log(`Installed Sesshush instructions for ${result.agent} in ${result.sesshushPath}`);
       }
       if (!flags.hookOnly && process.platform !== 'win32') {
         const hook = installHook({ global: flags.global, hookOnly: flags.hookOnly });
         console.log(`Installed shell hook in ${hook.profile}`);
       } else if (process.platform === 'win32') {
-        console.log('Native Windows mode uses AGENTS.md/NOISEGATE.md instructions. Use WSL for shell auto-rewrite.');
+        console.log('Native Windows mode uses AGENTS.md/SESSHUSH.md instructions. Use WSL for shell auto-rewrite.');
       } else if (flags.hookOnly) {
         console.log('Hook-only mode: no shell functions installed.');
       }
@@ -165,7 +165,7 @@ export async function main(argv) {
       }
     } else {
       const result = installHook({ global: flags.global, hookOnly: flags.hookOnly });
-      console.log(`Installed noisegate hook in ${result.profile}`);
+      console.log(`Installed sesshush hook in ${result.profile}`);
       console.log('Restart your shell or source the profile for changes to take effect.');
     }
     return;
@@ -175,11 +175,11 @@ export async function main(argv) {
     const hook = uninstallHook({});
     const vscode = uninstallVscodeExtension();
     const agents = uninstallAgentInstructions({ global: true });
-    console.log(hook.changed ? `Removed shell hook from ${hook.profile}` : `No noisegate hook found in ${hook.profile}`);
+    console.log(hook.changed ? `Removed shell hook from ${hook.profile}` : `No sesshush hook found in ${hook.profile}`);
     if (vscode.uninstalled) console.log('Uninstalled VS Code extension');
     else if (!vscode.reason?.includes('not found')) console.log(`VS Code extension: ${vscode.reason || 'skipped'}`);
     for (const result of agents) {
-      console.log(`Removed agent files from ${result.agent}: ${result.noisegatePath}`);
+      console.log(`Removed agent files from ${result.agent}: ${result.sesshushPath}`);
     }
     return;
   }
@@ -204,7 +204,7 @@ export async function main(argv) {
       console.log(JSON.stringify(snapshot, null, 2));
     } else {
       console.log([
-        `NoiseGate status`,
+        `Sesshush status`,
         `session_id: ${currentSessionId()}`,
         `session_saved: ${snapshot.session.savedTokens} tokens (${snapshot.session.savedPercent.toFixed(1)}%)`,
         `total_saved: ${snapshot.total.savedTokens} tokens (${snapshot.total.savedPercent.toFixed(1)}%)`
@@ -232,7 +232,7 @@ export async function main(argv) {
   const rawOutput = `${result.stdout}${result.stderr}`;
 
   if (result.error) {
-    console.error(`[noisegate] failed to execute ${command}: ${result.error.message}`);
+    console.error(`[sesshush] failed to execute ${command}: ${result.error.message}`);
     process.exit(result.status);
   }
 
@@ -245,7 +245,7 @@ export async function main(argv) {
   try {
     filtered = filterOutput(command, args, rawOutput, config);
   } catch (error) {
-    process.stderr.write(`[noisegate] filter failed, printing raw output: ${error.message}\n`);
+    process.stderr.write(`[sesshush] filter failed, printing raw output: ${error.message}\n`);
     process.stdout.write(maybeStripAnsi(rawOutput, flags.colors && config.colors));
     process.exit(result.status);
   }

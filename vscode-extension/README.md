@@ -1,16 +1,12 @@
-# RTK Token Savings for VS Code
+# Sesshush Token Savings for VS Code
 
-Shows RTK token savings in the VS Code status bar.
+Shows Sesshush token savings in the VS Code status bar.
 
 ## How It Works
 
-The extension runs this command internally every few seconds:
+The extension runs `sesshush status --json` internally every few seconds.
 
-```sh
-rtk-node status --json
-```
-
-It also provides `RTK: Start Agent Terminal`, which opens a VS Code terminal with `RTK_SESSION_ID` and `RTK_SESSION_LABEL` set. Commands run through `rtk-node` in that terminal are counted against the active VS Code session.
+It also provides `Sesshush: Start Agent Terminal`, which opens a VS Code terminal with `SESSHUSH_SESSION_ID` and `SESSHUSH_SESSION_LABEL` set. Commands run through `sesshush` in that terminal are counted against the active VS Code session.
 
 ## Development Install
 
@@ -19,20 +15,20 @@ From this folder:
 ```sh
 npm install -g @vscode/vsce
 vsce package
-code --install-extension rtk-token-savings-0.1.0.vsix
+code --install-extension sesshush-token-savings-1.0.0.vsix
 ```
 
-Make sure `rtk-node` is installed and available on `PATH`.
+Make sure `sesshush` is installed and available on `PATH`.
 
 ## Commands
 
-- `RTK: Refresh Token Savings`
-- `RTK: Start New Session`
-- `RTK: Start Agent Terminal`
+- `Sesshush: Refresh Token Savings`
+- `Sesshush: Start New Session`
+- `Sesshush: Start Agent Terminal`
 
 ## Settings
 
-- `rtk.command`: command used to run RTK, default `rtk-node`.
-- `rtk.refreshIntervalMs`: status refresh interval, default `3000`.
-- `rtk.defaultAgentCommand`: default terminal command, default `codex`.
-- `rtk.showTotalWhenNoSession`: show lifetime totals until the session has runs.
+- `sesshush.command`: command used to run Sesshush, default `sesshush`.
+- `sesshush.refreshIntervalMs`: status refresh interval, default `3000`.
+- `sesshush.defaultAgentCommand`: default terminal command, default `codex`.
+- `sesshush.showTotalWhenNoSession`: show lifetime totals until the session has runs.

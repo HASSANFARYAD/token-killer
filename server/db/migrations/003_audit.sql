@@ -1,4 +1,4 @@
--- NoiseGate Enterprise — Triggers
+-- Sesshush Enterprise — Triggers
 -- Migration 003
 
 -- Auto-update updated_at on users

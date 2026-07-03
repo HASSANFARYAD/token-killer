@@ -1,10 +1,10 @@
 {
-  "name": "noisegate",
+  "name": "sesshush",
   "version": "1.0.0",
-  "description": "NoiseGate — command output filter for AI coding agents. Compresses noisy CLI output, tracks token savings. Works with opencode, Codex, Claude Code, and more.",
+  "description": "Sesshush — command output filter for AI coding agents. Compresses noisy CLI output, tracks token savings. Works with opencode, Codex, Claude Code, and more.",
   "type": "module",
   "bin": {
-    "noisegate": "./bin/noisegate.js"
+    "sesshush": "./bin/sesshush.js"
   },
   "files": [
     "bin",
@@ -17,7 +17,7 @@
     "README.md"
   ],
   "scripts": {
-    "build:vsix": "cd vscode-extension && npx --yes @vscode/vsce package --allow-missing-repository",
+    "build:vsix": "cd vscode-extension && npx --yes @vscode/vsce package --allow-missing-repository 2>nul",
     "test": "node --test"
   },
   "keywords": [
@@ -30,18 +30,18 @@
     "codex",
     "claude",
     "token-savings",
-    "noisegate"
+    "sesshush"
   ],
   "author": "",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/has-san/noisegate.git"
+    "url": "git+https://github.com/HASSANFARYAD/token-killer.git"
   },
   "bugs": {
-    "url": "https://github.com/has-san/noisegate/issues"
+    "url": "https://github.com/HASSANFARYAD/token-killer/issues"
   },
-  "homepage": "https://github.com/has-san/noisegate#readme",
+  "homepage": "https://github.com/HASSANFARYAD/token-killer#readme",
   "engines": {
     "node": ">=18"
   }

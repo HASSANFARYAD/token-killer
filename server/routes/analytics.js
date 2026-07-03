@@ -230,7 +230,7 @@ router.get('/export', requireMinRole('admin'), scopeToTenant, validateQuery(
   `).all(...params);
 
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', `attachment; filename="noisegate-analytics-${Date.now()}.csv"`);
+  res.setHeader('Content-Disposition', `attachment; filename="sesshush-analytics-${Date.now()}.csv"`);
   res.send(exportCsv(rows, ['email', 'display_name', 'department', 'role', 'date', 'commands_count', 'sessions_count', 'saved_tokens', 'estimated_cost_usd']));
 });
 

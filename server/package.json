@@ -1,7 +1,7 @@
 {
-  "name": "noisegate-server",
+  "name": "sesshush-server",
   "version": "1.0.0",
-  "description": "NoiseGate Enterprise Server — authentication, user management, analytics, and admin portal",
+  "description": "Sesshush Enterprise Server — authentication, user management, analytics, and admin portal",
   "type": "module",
   "main": "index.js",
   "scripts": {

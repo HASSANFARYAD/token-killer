@@ -14,7 +14,7 @@ function workspaceCwd() {
 }
 
 function config() {
-  return vscode.workspace.getConfiguration('rtk');
+  return vscode.workspace.getConfiguration('sesshush');
 }
 
 function makeSessionId() {
@@ -27,7 +27,7 @@ function formatTokens(tokens) {
   return String(tokens);
 }
 
-function rtkEnv() {
+function sesshushEnv() {
   const npmGlobal = path.join(os.homedir(), 'AppData', 'Roaming', 'npm');
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') || 'PATH';
   const pathValue = process.env[pathKey] || '';
@@ -38,13 +38,15 @@ function rtkEnv() {
   return {
     ...process.env,
     [pathKey]: nextPath,
-    RTK_SESSION_ID: sessionId,
-    RTK_SESSION_LABEL: sessionLabel
+    SESSHUSH_SESSION_ID: sessionId,
+    SESSHUSH_SESSION_LABEL: sessionLabel,
+    NOISEGATE_SESSION_ID: sessionId,
+    RTK_SESSION_ID: sessionId
   };
 }
 
 function commandCandidates() {
-  const configuredCommand = config().get('command', 'rtk-node');
+  const configuredCommand = config().get('command', 'sesshush');
   const candidates = [];
   const push = (command, argsPrefix = []) => {
     if (!candidates.some((candidate) => candidate.command === command && candidate.argsPrefix.join('\0') === argsPrefix.join('\0'))) {
@@ -54,23 +56,23 @@ function commandCandidates() {
 
   if (configuredCommand) push(configuredCommand);
   if (process.platform === 'win32') {
-    push('rtk-node.cmd');
-    push(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'rtk-node.cmd'));
+    push('sesshush.cmd');
+    push(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'sesshush.cmd'));
   } else {
-    push('rtk-node');
+    push('sesshush');
   }
 
-  const localCli = path.join(workspaceCwd(), 'bin', 'rtk-node.js');
+  const localCli = path.join(workspaceCwd(), 'bin', 'sesshush.js');
   if (fs.existsSync(localCli)) push(process.execPath, [localCli]);
 
   return candidates;
 }
 
-function execRtkCandidate(candidate) {
+function execSesshushCandidate(candidate) {
   return new Promise((resolve, reject) => {
     execFile(candidate.command, [...candidate.argsPrefix, 'status', '--json'], {
       cwd: workspaceCwd(),
-      env: rtkEnv(),
+      env: sesshushEnv(),
       windowsHide: true,
       timeout: 5000
     }, (error, stdout, stderr) => {
@@ -87,11 +89,11 @@ function execRtkCandidate(candidate) {
   });
 }
 
-async function runRtkStatus() {
+async function runSesshushStatus() {
   const errors = [];
   for (const candidate of commandCandidates()) {
     try {
-      return await execRtkCandidate(candidate);
+      return await execSesshushCandidate(candidate);
     } catch (error) {
       errors.push(`${candidate.command}: ${error.message}`);
     }
@@ -103,26 +105,26 @@ async function refreshStatus() {
   if (!statusItem) return;
 
   try {
-    const snapshot = await runRtkStatus();
+    const snapshot = await runSesshushStatus();
     const showTotal = config().get('showTotalWhenNoSession', true);
     const source = snapshot.session.runs || !showTotal ? snapshot.session : snapshot.total;
     const label = snapshot.session.runs || !showTotal ? 'session' : 'total';
 
-    statusItem.text = `RTK $(zap) ${formatTokens(source.savedTokens)} saved`;
+    statusItem.text = `Sesshush $(zap) ${formatTokens(source.savedTokens)} saved`;
     statusItem.tooltip = [
-      `RTK token savings (${label})`,
+      `Sesshush token savings (${label})`,
       `Saved: ${source.savedTokens} tokens (${source.savedPercent.toFixed(1)}%)`,
       `Original: ${source.originalTokens} tokens`,
       `Compressed: ${source.compressedTokens} tokens`,
       `Runs: ${source.runs}`,
       `Session: ${sessionLabel}`
     ].join('\n');
-    statusItem.command = 'rtk.refresh';
+    statusItem.command = 'sesshush.refresh';
     statusItem.show();
   } catch (error) {
-    statusItem.text = 'RTK unavailable';
-    statusItem.tooltip = `Unable to run RTK status: ${error.message}`;
-    statusItem.command = 'rtk.refresh';
+    statusItem.text = 'Sesshush unavailable';
+    statusItem.tooltip = `Unable to run Sesshush status: ${error.message}`;
+    statusItem.command = 'sesshush.refresh';
     statusItem.show();
   }
 }
@@ -139,18 +141,18 @@ async function newSession() {
   sessionLabel = `VS Code ${new Date().toLocaleTimeString()}`;
   await contextStateSet();
   await refreshStatus();
-  vscode.window.showInformationMessage(`RTK session started: ${sessionLabel}`);
+  vscode.window.showInformationMessage(`Sesshush session started: ${sessionLabel}`);
 }
 
 async function contextStateSet() {
-  await vscode.commands.executeCommand('setContext', 'rtk.sessionId', sessionId);
+  await vscode.commands.executeCommand('setContext', 'sesshush.sessionId', sessionId);
 }
 
 async function startAgentTerminal() {
   const defaultCommand = config().get('defaultAgentCommand', 'codex');
   const command = await vscode.window.showInputBox({
-    title: 'RTK: Start Agent Terminal',
-    prompt: 'Agent command to run with RTK session tracking',
+    title: 'Sesshush: Start Agent Terminal',
+    prompt: 'Agent command to run with Sesshush session tracking',
     value: defaultCommand
   });
   if (!command) return;
@@ -162,11 +164,13 @@ async function startAgentTerminal() {
   }
 
   const terminal = vscode.window.createTerminal({
-    name: `RTK Agent: ${command}`,
+    name: `Sesshush Agent: ${command}`,
     cwd: workspaceCwd(),
     env: {
-      RTK_SESSION_ID: sessionId,
-      RTK_SESSION_LABEL: sessionLabel
+      SESSHUSH_SESSION_ID: sessionId,
+      SESSHUSH_SESSION_LABEL: sessionLabel,
+      NOISEGATE_SESSION_ID: sessionId,
+      RTK_SESSION_ID: sessionId
     }
   });
   terminal.show();
@@ -179,16 +183,16 @@ async function activate(context) {
   sessionLabel = context.globalState.get('sessionLabel') || `VS Code ${new Date().toLocaleTimeString()}`;
 
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusItem.text = 'RTK starting';
+    statusItem.text = 'Sesshush starting...';
   statusItem.show();
   context.subscriptions.push(statusItem);
 
-  context.subscriptions.push(vscode.commands.registerCommand('rtk.refresh', refreshStatus));
-  context.subscriptions.push(vscode.commands.registerCommand('rtk.newSession', newSession));
-  context.subscriptions.push(vscode.commands.registerCommand('rtk.startAgentTerminal', startAgentTerminal));
+  context.subscriptions.push(vscode.commands.registerCommand('sesshush.refresh', refreshStatus));
+  context.subscriptions.push(vscode.commands.registerCommand('sesshush.newSession', newSession));
+  context.subscriptions.push(vscode.commands.registerCommand('sesshush.startAgentTerminal', startAgentTerminal));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
-    if (event.affectsConfiguration('rtk.refreshIntervalMs')) startTimer(context);
-    if (event.affectsConfiguration('rtk')) refreshStatus();
+    if (event.affectsConfiguration('sesshush.refreshIntervalMs')) startTimer(context);
+    if (event.affectsConfiguration('sesshush')) refreshStatus();
   }));
 
   context.subscriptions.push({

@@ -131,7 +131,7 @@ router.put('/settings/:key', requireMinRole('super_admin'), validate(z.object({ 
 router.get('/backup', requireMinRole('super_admin'), (req, res) => {
   const dbPath = config.dbPath;
   res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="noisegate-backup-${new Date().toISOString().slice(0, 10)}.db"`);
+  res.setHeader('Content-Disposition', `attachment; filename="sesshush-backup-${new Date().toISOString().slice(0, 10)}.db"`);
   createReadStream(dbPath).pipe(res);
 });
 

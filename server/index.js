@@ -17,7 +17,7 @@ setInterval(cleanExpiredSessions, 60 * 60 * 1000);
 const app = createApp();
 
 const server = app.listen(config.port, config.host, () => {
-  logger.info('[server] NoiseGate Enterprise Server started', {
+  logger.info('[server] Sesshush Enterprise Server started', {
     host: config.host,
     port: config.port,
     env: config.env,

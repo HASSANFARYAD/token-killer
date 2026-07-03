@@ -13,3 +13,4 @@ __pycache__/
 vscode-extension/$null
 
 .claude/settings.local.json
+.npmrc

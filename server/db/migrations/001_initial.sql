@@ -1,4 +1,4 @@
--- NoiseGate Enterprise — Initial Schema
+-- Sesshush Enterprise — Initial Schema
 -- Migration 001
 
 PRAGMA journal_mode = WAL;

@@ -1,28 +1,28 @@
 version: '3.9'
 
 services:
-  rtk-server:
+  sesshush-server:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
       - "${PORT:-3000}:3000"
     volumes:
-      - rtk-data:/data
+      - sesshush-data:/data
     environment:
       NODE_ENV: production
-      RTK_DB_PATH: /data/rtk.db
-      RTK_JWT_SECRET: ${RTK_JWT_SECRET:?Required — set in .env}
-      RTK_ENCRYPTION_KEY: ${RTK_ENCRYPTION_KEY:?Required — set in .env}
-      RTK_BASE_URL: ${RTK_BASE_URL:-http://localhost:3000}
+      SESSHUSH_DB_PATH: /data/sesshush.db
+      SESSHUSH_JWT_SECRET: ${SESSHUSH_JWT_SECRET:?Required — set in .env}
+      SESSHUSH_ENCRYPTION_KEY: ${SESSHUSH_ENCRYPTION_KEY:?Required — set in .env}
+      SESSHUSH_BASE_URL: ${SESSHUSH_BASE_URL:-http://localhost:3000}
 
       # Microsoft OAuth (optional — omit for local-auth-only deployments)
-      RTK_MS_CLIENT_ID: ${RTK_MS_CLIENT_ID:-}
-      RTK_MS_CLIENT_SECRET: ${RTK_MS_CLIENT_SECRET:-}
-      RTK_MS_TENANT_ID: ${RTK_MS_TENANT_ID:-common}
-      RTK_MS_REDIRECT_URI: ${RTK_MS_REDIRECT_URI:-http://localhost:3000/api/auth/microsoft/callback}
+      SESSHUSH_MS_CLIENT_ID: ${SESSHUSH_MS_CLIENT_ID:-}
+      SESSHUSH_MS_CLIENT_SECRET: ${SESSHUSH_MS_CLIENT_SECRET:-}
+      SESSHUSH_MS_TENANT_ID: ${SESSHUSH_MS_TENANT_ID:-common}
+      SESSHUSH_MS_REDIRECT_URI: ${SESSHUSH_MS_REDIRECT_URI:-http://localhost:3000/api/auth/microsoft/callback}
 
-      RTK_LOG_LEVEL: ${RTK_LOG_LEVEL:-info}
+      SESSHUSH_LOG_LEVEL: ${SESSHUSH_LOG_LEVEL:-info}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
@@ -39,5 +39,5 @@ services:
   #     - "8025:8025"
 
 volumes:
-  rtk-data:
+  sesshush-data:
     driver: local

@@ -1,9 +1,9 @@
 {
-  "name": "rtk-token-savings",
-  "displayName": "RTK Token Savings",
-  "description": "Shows RTK token savings for the current agent chat session in the VS Code status bar.",
-  "version": "0.1.0",
-  "publisher": "rtk",
+  "name": "sesshush-token-savings",
+  "displayName": "Sesshush Token Savings",
+  "description": "Shows Sesshush token savings for the current agent chat session in the VS Code status bar.",
+  "version": "1.0.0",
+  "publisher": "has-san",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -12,46 +12,46 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:rtk.refresh",
-    "onCommand:rtk.startAgentTerminal",
-    "onCommand:rtk.newSession"
+    "onCommand:sesshush.refresh",
+    "onCommand:sesshush.startAgentTerminal",
+    "onCommand:sesshush.newSession"
   ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "rtk.refresh",
-        "title": "RTK: Refresh Token Savings"
+        "command": "sesshush.refresh",
+        "title": "Sesshush: Refresh Token Savings"
       },
       {
-        "command": "rtk.newSession",
-        "title": "RTK: Start New Session"
+        "command": "sesshush.newSession",
+        "title": "Sesshush: Start New Session"
       },
       {
-        "command": "rtk.startAgentTerminal",
-        "title": "RTK: Start Agent Terminal"
+        "command": "sesshush.startAgentTerminal",
+        "title": "Sesshush: Start Agent Terminal"
       }
     ],
     "configuration": {
-      "title": "RTK Token Savings",
+      "title": "Sesshush Token Savings",
       "properties": {
-        "rtk.command": {
+        "sesshush.command": {
           "type": "string",
-          "default": "rtk-node",
-          "description": "Command used to run RTK."
+          "default": "sesshush",
+          "description": "Command used to run Sesshush."
         },
-        "rtk.refreshIntervalMs": {
+        "sesshush.refreshIntervalMs": {
           "type": "number",
           "default": 3000,
           "minimum": 1000,
           "description": "How often the status bar refreshes token savings."
         },
-        "rtk.defaultAgentCommand": {
+        "sesshush.defaultAgentCommand": {
           "type": "string",
           "default": "codex",
-          "description": "Default command for RTK: Start Agent Terminal."
+          "description": "Default command for Sesshush: Start Agent Terminal."
         },
-        "rtk.showTotalWhenNoSession": {
+        "sesshush.showTotalWhenNoSession": {
           "type": "boolean",
           "default": true,
           "description": "Show lifetime total savings when the active session has no recorded runs."

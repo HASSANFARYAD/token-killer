@@ -1,16 +1,16 @@
 $ErrorActionPreference = "Stop"
 
-$prefix = Join-Path $env:LOCALAPPDATA "noisegate"
+$prefix = Join-Path $env:LOCALAPPDATA "sesshush"
 New-Item -ItemType Directory -Force -Path $prefix | Out-Null
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-  Write-Error "npm is required to install noisegate"
+  Write-Error "npm is required to install sesshush"
 }
 
-npm install -g noisegate --prefix $prefix
-Write-Host "Installed noisegate to $prefix"
+npm install -g sesshush --prefix $prefix
+Write-Host "Installed sesshush to $prefix"
 Write-Host "Add this to PATH if needed: $prefix"
-if ($env:NOISEGATE_NO_INIT -ne "1") {
+if ($env:SESSHUSH_NO_INIT -ne "1") {
   $env:PATH = "$prefix;$env:PATH"
-  noisegate init -g --all-agents
+  sesshush init -g --all-agents
 }
