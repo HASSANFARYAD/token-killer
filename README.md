@@ -170,6 +170,13 @@ Defaults:
 
 Telemetry is local only. No data is sent externally by default.
 
+Values outside a usable range (a negative `maxLines`, a zero `maxChars`) fall
+back to the default rather than being honoured, so a typo in this file cannot
+silently throw your command output away.
+
+Binary output is reported as `<binary output: N bytes, not shown>` rather than
+written through; pass `-v` when you need the raw bytes.
+
 ## Analytics
 
 Show approximate saved tokens:

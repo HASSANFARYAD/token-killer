@@ -50,8 +50,10 @@ test('PowerShell routing is skipped for a stdin reader with no file operand', {
 }, () => {
   // Get-Content requires a -Path and cannot read a pipe, so `cat` reading stdin
   // must not be rewritten into a cmdlet.
-  assert.equal(commandForTest('cat', []).command, 'cat');
-  assert.equal(commandForTest('cat', ['-']).command, 'cat');
+  // cat with no file operand must not become Get-Content; it may still be
+  // resolved to a full path, but it must not be a PowerShell invocation.
+  assert.doesNotMatch(commandForTest('cat', []).command, /powershell/i);
+  assert.doesNotMatch(commandForTest('cat', ['-']).command, /powershell/i);
   assert.equal(commandForTest('cat', ['file.txt']).command, 'powershell.exe');
 });
 

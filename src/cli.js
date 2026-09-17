@@ -319,8 +319,21 @@ export async function main(argv) {
   config.failed = failed;
   config.preserveTail = failed;
 
-  if (flags.verbose || config.excludedCommands.includes(commandName) || result.binary) {
+  if (flags.verbose || config.excludedCommands.includes(commandName)) {
     process.stdout.write(maybeStripAnsi(rawOutput, flags.colors && config.colors));
+    process.exit(result.status);
+  }
+
+  // Binary output used to be written through verbatim, which dumped the raw
+  // bytes into the agent's context — the opposite of the point. Describe it
+  // instead; `-v` still gives the real thing.
+  if (result.binary) {
+    process.stdout.write(`<binary output: ${byteLength(rawOutput)} bytes, not shown. Re-run with -v for raw output>\n`);
+    recordRun(commandName, rawOutput, '', {
+      exitCode: result.status,
+      durationMs: result.durationMs,
+      truncated: true
+    });
     process.exit(result.status);
   }
 

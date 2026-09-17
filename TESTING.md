@@ -134,8 +134,10 @@ Please do not file these — they are known and on the list:
   truncation, which does nothing at all under ~220 lines.
 - **Token counts are estimates** (characters ÷ 4), not a real tokenizer. Expect
   them to be off by 15–30% on code and diffs.
-- **Windows: quoted inline arguments can be mangled**, e.g.
-  `sesshush node -e "..."`. Use a script file instead.
+- **Each wrapped command costs about 190ms extra**, almost all of it Node
+  startup for the wrapper process. Noticeable on very short commands.
+- **Binary output is summarised, not shown** (`<binary output: N bytes>`). Use
+  `-v` if you actually need the bytes.
 - **It only sees shell commands.** If your agent reads files with its own
   built-in tools rather than through the shell, sesshush never sees that, and
   most of an agent's context is exactly that. Expect a modest win, not a

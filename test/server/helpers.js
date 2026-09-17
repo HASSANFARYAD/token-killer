@@ -9,8 +9,16 @@ import fs from 'node:fs';
 
 let testDbPath;
 
+// node --test runs each test file in its own process concurrently, so a name
+// built from Date.now() alone collides when two files start in the same
+// millisecond — they then share one SQLite file and fail with "database is
+// locked". The pid and a random suffix make it unique per process.
+function uniqueSuffix() {
+  return `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
 export function setupTestDb() {
-  testDbPath = path.join(os.tmpdir(), `sesshush-server-test-${Date.now()}.db`);
+  testDbPath = path.join(os.tmpdir(), `sesshush-server-test-${uniqueSuffix()}.db`);
   process.env.RTK_DB_PATH = testDbPath;
   process.env.RTK_JWT_SECRET = 'test-secret-do-not-use-in-production';
   process.env.RTK_ENCRYPTION_KEY = 'a'.repeat(64);
@@ -33,7 +41,7 @@ export async function createTestUser(overrides = {}) {
     INSERT INTO users (email, display_name, role, status, auth_provider, password_hash, tenant_id)
     VALUES (?, ?, ?, 'active', 'local', ?, ?)
   `).run(
-    overrides.email || `test-${Date.now()}@example.com`,
+    overrides.email || `test-${uniqueSuffix()}@example.com`,
     overrides.display_name || 'Test User',
     overrides.role || 'user',
     hash,

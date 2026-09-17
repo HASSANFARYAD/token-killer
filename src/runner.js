@@ -48,15 +48,87 @@ function shouldUsePowerShell(command, args = []) {
   return true;
 }
 
+// Spawning with shell:true on Windows hands the arguments to cmd.exe, which
+// then interprets the metacharacters inside them: an argument containing
+// "&& echo x" ran echo, and one containing "> f.txt" created a file. Wrapping a
+// command must never change what it does, so resolve the executable ourselves
+// and spawn it directly. Only .cmd/.bat shims genuinely need a shell.
+const executableCache = new Map();
+
+// Resolve against PATH in process. Shelling out to where.exe cost ~174ms on
+// every single wrapped command, which is a lot to add to something that runs
+// constantly; walking PATH with stat calls is effectively free.
+//
+// This follows the same order Windows itself uses: PATH directories in order,
+// and within each directory the extensions in PATHEXT order. That naturally
+// picks npm.cmd over the extensionless Unix shim sitting beside it, which
+// CreateProcess cannot execute.
+function resolveWindowsExecutable(command) {
+  if (command.includes('\\') || command.includes('/')) return command;
+  if (executableCache.has(command)) return executableCache.get(command);
+
+  const extensions = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map((extension) => extension.trim())
+    .filter(Boolean);
+  const directories = (process.env.PATH || process.env.Path || '')
+    .split(';')
+    .map((directory) => directory.trim())
+    .filter(Boolean);
+  const hasExtension = extensions.some((extension) => command.toLowerCase().endsWith(extension.toLowerCase()));
+
+  let resolved = null;
+  search: for (const directory of directories) {
+    const candidates = hasExtension
+      ? [command]
+      : extensions.map((extension) => `${command}${extension}`);
+    for (const candidate of candidates) {
+      const full = path.join(directory, candidate);
+      try {
+        if (fs.statSync(full).isFile()) {
+          resolved = full;
+          break search;
+        }
+      } catch {
+        // not here; keep looking
+      }
+    }
+  }
+
+  executableCache.set(command, resolved);
+  return resolved;
+}
+
+// Inside double quotes cmd.exe treats &, |, < and > as literal text, so quoting
+// every argument is what makes the .cmd path safe.
+function quoteForCmd(value) {
+  const escaped = String(value)
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\*)$/, '$1$1');
+  return `"${escaped}"`;
+}
+
 export function commandForTest(command, args = []) {
   if (!shouldUsePowerShell(command, args)) {
-    return {
-      command,
-      args,
-      options: {
-        shell: process.platform === 'win32'
-      }
-    };
+    if (process.platform !== 'win32') {
+      return { command, args, options: { shell: false } };
+    }
+
+    const resolved = resolveWindowsExecutable(command);
+    // Unresolvable: spawn without a shell so it fails with a clean ENOENT
+    // rather than handing the string to cmd.exe.
+    if (!resolved) return { command, args, options: { shell: false } };
+
+    if (/\.(cmd|bat)$/i.test(resolved)) {
+      const line = [resolved, ...args].map(quoteForCmd).join(' ');
+      return {
+        command: process.env.ComSpec || 'cmd.exe',
+        args: ['/d', '/s', '/c', `"${line}"`],
+        options: { shell: false, windowsVerbatimArguments: true }
+      };
+    }
+
+    return { command: resolved, args, options: { shell: false } };
   }
 
   // A failing cmdlet raises a non-terminating error and leaves powershell.exe

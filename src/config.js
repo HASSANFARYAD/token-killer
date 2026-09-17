@@ -41,11 +41,43 @@ export function ensureConfig() {
   }
 }
 
+// A hand-edited config must not be able to destroy output. maxChars: 0 emitted
+// nothing but a truncation marker, and a negative limit is meaningless, so
+// every value is coerced back into a usable range rather than trusted.
+const NUMERIC_BOUNDS = {
+  maxLines: { min: 1, max: 100000 },
+  maxChars: { min: 1, max: 10000000 },
+  matchesPerFile: { min: 1, max: 1000 },
+  diffContextLines: { min: 0, max: 100 }
+};
+
+export function sanitizeConfig(parsed) {
+  const config = { ...DEFAULT_CONFIG, ...(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}) };
+
+  for (const [key, { min, max }] of Object.entries(NUMERIC_BOUNDS)) {
+    const value = Math.trunc(Number(config[key]));
+    // Below the minimum means a typo, not a request for one line of output, so
+    // fall back to the default rather than clamping to a value that would
+    // silently throw the output away. Above the maximum is just over-eager.
+    if (!Number.isFinite(value) || value < min) config[key] = DEFAULT_CONFIG[key];
+    else config[key] = Math.min(max, value);
+  }
+
+  for (const key of ['ultraCompact', 'telemetry', 'colors', 'stripComments']) {
+    config[key] = Boolean(config[key]);
+  }
+
+  config.excludedCommands = Array.isArray(config.excludedCommands)
+    ? config.excludedCommands.filter((entry) => typeof entry === 'string')
+    : [];
+
+  return config;
+}
+
 export function loadConfig() {
   try {
     ensureConfig();
-    const parsed = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
-    return { ...DEFAULT_CONFIG, ...parsed };
+    return sanitizeConfig(JSON.parse(fs.readFileSync(configPath(), 'utf8')));
   } catch {
     return { ...DEFAULT_CONFIG };
   }
