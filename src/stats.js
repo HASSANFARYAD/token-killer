@@ -134,9 +134,87 @@ function boundedRecent(runs, run) {
   return [run, ...(Array.isArray(runs) ? runs : [])].slice(0, MAX_RECENT_RUNS);
 }
 
+// Sessions are keyed by agent session id, or by user:cwd when there is none, so
+// the map grows without limit over time. The whole file is parsed and rewritten
+// on every single command, so unbounded growth is a steadily worsening tax on
+// every command the user runs.
+const MAX_SESSIONS = 200;
+
+function pruneSessions(db) {
+  const ids = Object.keys(db.sessions);
+  if (ids.length <= MAX_SESSIONS) return;
+
+  const keep = new Set(ids
+    .map((id) => ({ id, at: db.sessions[id]?.updatedAt || db.sessions[id]?.startedAt || '' }))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, MAX_SESSIONS)
+    .map((entry) => entry.id));
+
+  for (const id of ids) {
+    if (!keep.has(id)) delete db.sessions[id];
+  }
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+const LOCK_ATTEMPTS = 60;
+const LOCK_WAIT_MS = 20;
+const LOCK_STALE_MS = 10_000;
+
+// recordRun is a read-modify-write of a single JSON file, and commands very
+// often run in parallel. Without a lock the last writer wins and every other
+// run is silently dropped: 12 concurrent commands recorded 1. That makes the
+// savings figure — the entire point of the tool — an undercount.
+function withLock(lockPath, fn) {
+  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
+    let handle;
+    try {
+      handle = fs.openSync(lockPath, 'wx');
+    } catch (error) {
+      if (error.code !== 'EEXIST') return fn(); // cannot lock here; do not lose the run
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS) fs.unlinkSync(lockPath);
+      } catch { /* another process cleaned it up */ }
+      sleepSync(LOCK_WAIT_MS);
+      continue;
+    }
+
+    try {
+      return fn();
+    } finally {
+      try { fs.closeSync(handle); } catch { /* already closed */ }
+      try { fs.unlinkSync(lockPath); } catch { /* already removed */ }
+    }
+  }
+  return false; // contended for too long; drop this sample rather than stall the command
+}
+
+// Write via a temp file and rename so a crash or a concurrent reader never sees
+// a half-written file.
+function writeAtomic(target, contents) {
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(temp, contents);
+  try {
+    fs.renameSync(temp, target);
+  } catch (error) {
+    try { fs.unlinkSync(temp); } catch { /* best effort */ }
+    throw error;
+  }
+}
+
 export function recordRun(command, originalText, compressedText, options = {}) {
   try {
     fs.mkdirSync(dataDir(), { recursive: true });
+    return withLock(`${analyticsPath()}.lock`, () => recordRunLocked(command, originalText, compressedText, options));
+  } catch {
+    return false;
+  }
+}
+
+function recordRunLocked(command, originalText, compressedText, options = {}) {
+  try {
     const db = readAnalytics();
     const originalTokens = estimateTokens(originalText);
     const compressedTokens = estimateTokens(compressedText);
@@ -191,8 +269,9 @@ export function recordRun(command, originalText, compressedText, options = {}) {
     };
     db.recentRuns = boundedRecent(db.recentRuns, run);
     session.recentRuns = boundedRecent(session.recentRuns, run);
+    pruneSessions(db);
 
-    fs.writeFileSync(analyticsPath(), JSON.stringify(db, null, 2));
+    writeAtomic(analyticsPath(), JSON.stringify(db, null, 2));
     return true;
   } catch {
     return false;

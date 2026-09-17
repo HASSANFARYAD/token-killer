@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { configDir } from './config.js';
 
 const START = '# >>> sesshush hook >>>';
@@ -356,7 +357,28 @@ export function uninstallCodexInstructions({ global = false } = {}) {
   return uninstallAgentInstructions({ global, agents: ['codex'] });
 }
 
-const VSCODE_EXTENSION_ID = 'sesshush-token-savings';
+function extensionDir() {
+  // new URL(...).pathname yields "/D:/..." on Windows, which is not a usable
+  // path; fileURLToPath handles the platform difference.
+  return path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), 'vscode-extension');
+}
+
+function extensionManifest() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(extensionDir(), 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// `code --uninstall-extension` takes "<publisher>.<name>". Read it from the
+// extension manifest so it cannot drift from what was actually packaged. The
+// hardcoded id used before did not match the manifest, so uninstall was a no-op.
+function vscodeExtensionId() {
+  const manifest = extensionManifest();
+  if (manifest?.publisher && manifest?.name) return `${manifest.publisher}.${manifest.name}`;
+  return 'rtk.savytox';
+}
 
 function vsCodeAvailable() {
   try {
@@ -374,22 +396,30 @@ function vsCodeAvailable() {
 export function installVscodeExtension() {
   if (!vsCodeAvailable()) return { installed: false, reason: 'VS Code CLI not found' };
 
-  const dir = path.dirname(new URL(import.meta.url).pathname);
-  const vsixDir = path.join(path.resolve(dir, '..'), 'vscode-extension');
+  const vsixDir = extensionDir();
 
-  let found = null;
+  let candidates;
   try {
-    for (const file of fs.readdirSync(vsixDir)) {
-      if (file.endsWith('.vsix')) {
-        found = path.join(vsixDir, file);
-        break;
-      }
-    }
+    candidates = fs.readdirSync(vsixDir).filter((file) => file.endsWith('.vsix'));
   } catch {
     return { installed: false, reason: 'VSIX directory not found' };
   }
 
-  if (!found) return { installed: false, reason: 'No VSIX file found' };
+  if (!candidates.length) return { installed: false, reason: 'No VSIX file found' };
+
+  // Prefer the build that matches the current manifest. Picking whichever file
+  // readdir returned first would happily install a stale vsix left behind by an
+  // earlier release, which is how a build with no bundled CLI kept shipping.
+  const manifest = extensionManifest();
+  const expected = manifest ? `${manifest.name}-${manifest.version}.vsix` : null;
+  const found = path.join(
+    vsixDir,
+    candidates.includes(expected)
+      ? expected
+      : candidates
+        .map((file) => ({ file, mtime: fs.statSync(path.join(vsixDir, file)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime)[0].file
+  );
 
   try {
     const result = spawnSync('code', ['--install-extension', found], {
@@ -411,7 +441,7 @@ export function uninstallVscodeExtension() {
   if (!vsCodeAvailable()) return { uninstalled: false, reason: 'VS Code CLI not found' };
 
   try {
-    const result = spawnSync('code', ['--uninstall-extension', VSCODE_EXTENSION_ID], {
+    const result = spawnSync('code', ['--uninstall-extension', vscodeExtensionId()], {
       stdio: 'pipe',
       timeout: 15000,
       windowsHide: true

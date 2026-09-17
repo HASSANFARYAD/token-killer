@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isProbablyBinary } from './utils.js';
 
 function readFiles(args) {
   const files = args.filter((arg) => !arg.startsWith('-'));
@@ -7,7 +8,14 @@ function readFiles(args) {
   const chunks = [];
   for (const file of files) {
     try {
-      chunks.push(fs.readFileSync(file, 'utf8'));
+      const buffer = fs.readFileSync(file);
+      // Read as bytes first: decoding a PNG as utf8 produced a wall of
+      // replacement characters that went straight into the agent's context.
+      if (isProbablyBinary(buffer)) {
+        chunks.push(`<binary file: ${file}, ${buffer.length} bytes, not shown>`);
+        continue;
+      }
+      chunks.push(buffer.toString('utf8'));
     } catch (error) {
       return { stdout: chunks.join('\n'), stderr: `${file}: ${error.message}\n`, status: 1 };
     }

@@ -102,6 +102,33 @@ test('a failing command is never compressed into silence', () => {
   });
 });
 
+// Blocker 3: the vsix that shipped inside the npm tarball contained only 5
+// files — no bin/, no src/ — so the extension it installed had no bundled CLI
+// and auto-wrap failed outright. Skipped when no vsix has been built.
+test('a built vsix contains a runnable bundled CLI', () => {
+  const vsixDir = path.join(repoRoot, 'vscode-extension');
+  const vsix = fs.readdirSync(vsixDir).filter((file) => file.endsWith('.vsix'));
+
+  if (!vsix.length) return; // nothing packaged in this checkout
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(vsixDir, 'package.json'), 'utf8'));
+  const expected = `${manifest.name}-${manifest.version}.vsix`;
+  assert.ok(vsix.includes(expected), `expected ${expected}, found ${vsix.join(', ')}`);
+  assert.equal(vsix.length, 1, `stale vsix alongside the current build: ${vsix.join(', ')}`);
+
+  const entries = spawnSync(process.execPath, ['-e',
+    `const z=require('zlib'),f=require('fs');const b=f.readFileSync(process.argv[1]);`
+    + `let i=0,out=[];while((i=b.indexOf(Buffer.from('PK\\x03\\x04'),i))>=0){`
+    + `const n=b.readUInt16LE(i+26),m=b.readUInt16LE(i+28);`
+    + `out.push(b.slice(i+30,i+30+n).toString());i+=30+n+m;}console.log(out.join('\\n'));`,
+    path.join(vsixDir, expected)
+  ], { encoding: 'utf8' }).stdout;
+
+  assert.match(entries, /extension\/bin\/sesshush\.js/, 'vsix has no bundled CLI');
+  assert.match(entries, /extension\/src\/cli\.js/, 'vsix has no engine');
+  assert.match(entries, /extension\/src\/filters\.js/, 'vsix has no filters');
+});
+
 test('engine copy shipped in the extension is in sync with src/', () => {
   const result = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'sync-engine.mjs'), '--check'], {
     encoding: 'utf8',

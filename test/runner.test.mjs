@@ -9,31 +9,32 @@ test('Windows PowerShell commands are routed through powershell.exe', { skip: pr
   const resolved = commandForTest('Get-Content', ['-Raw', 'README.md']);
 
   assert.equal(resolved.command, 'powershell.exe');
-  assert.deepEqual(resolved.args.slice(0, 5), [
+  assert.deepEqual(resolved.args.slice(0, 4), [
     '-NoProfile',
     '-ExecutionPolicy',
     'Bypass',
-    '-Command',
-    '& { Get-Content @args }'
+    '-Command'
   ]);
+  assert.match(resolved.args[4], /^& \{ .*Get-Content @args; .*\}$/);
   assert.deepEqual(resolved.args.slice(5), ['-Raw', 'README.md']);
   assert.equal(resolved.options.shell, false);
 });
 
-test('regular commands keep the executable runner path', () => {
+test('regular commands are spawned without a shell', () => {
   const resolved = commandForTest('git', ['status']);
 
-  assert.equal(resolved.command, 'git');
+  // The command may be resolved to a full path on Windows, but it must never
+  // be handed to a shell: that is what let arguments inject commands.
+  assert.match(resolved.command, /(^|[\\/])git(\.exe|\.cmd)?$/i);
   assert.deepEqual(resolved.args, ['status']);
-  assert.equal(resolved.options.shell, process.platform === 'win32');
+  assert.notEqual(resolved.options.shell, true);
 });
 
 test('regular commands preserve dot path arguments', () => {
   const resolved = commandForTest('git', ['add', '.']);
 
-  assert.equal(resolved.command, 'git');
   assert.deepEqual(resolved.args, ['add', '.']);
-  assert.equal(resolved.options.shell, process.platform === 'win32');
+  assert.notEqual(resolved.options.shell, true);
 });
 
 test('runs PowerShell cmdlets on Windows', { skip: process.platform !== 'win32' }, () => {

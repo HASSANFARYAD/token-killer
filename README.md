@@ -92,10 +92,20 @@ The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids rec
 
 ## Filters
 
-- `git status`: branch plus staged, unstaged, and untracked counts.
+- `git status`: branch, ahead/behind, and staged/unstaged/untracked/conflict
+  counts. Runs `git status --porcelain=v2` under the hood, so the counts are
+  exact and unaffected by locale. Pass your own format flag (`-s`, `--porcelain`,
+  `--long`) to keep git's output as-is.
 - `git diff`: filenames, hunk headers, changes, and limited context.
 - `rg` / `grep`: grouped by file with capped matches per file.
-- `pytest` / `npm test`: failures, tracebacks, error lines, and summaries.
+- `read` / `cat`: file content with runs of blank lines collapsed. Comments are
+  kept — they carry intent an agent needs. Set `stripComments: true` in config
+  to remove them.
+- compilers and linters (`dotnet`, `cargo`, `go`, `tsc`, `eslint`, `mvn`,
+  `gradle`, `make`, `ruff`, `mypy`): diagnostics with their file/line positions
+  and code snippets, dropping restore/download/progress noise.
+- test runners (`pytest`, `npm test`, `jest`, `vitest`, `mocha`, `node --test`,
+  `tox`): failures, tracebacks, error lines, and summaries.
 - fallback: deduplicate repeated lines and truncate by configured thresholds.
 
 ## Failed commands
@@ -112,6 +122,27 @@ Compression of a failure is deliberately conservative:
 - If a filter would leave a failed command with no output at all, the raw output
   is printed instead.
 - The exit code is always propagated unchanged.
+
+## Piping
+
+Stdin is passed through to the wrapped command, so `producer | sesshush consumer`
+works:
+
+```sh
+cat access.log | sesshush grep ERROR
+```
+
+## Turning it off
+
+Set `SESSHUSH_DISABLE=1` and the shell hook runs the real command untouched, so
+you can compare exact output without uninstalling anything:
+
+```sh
+SESSHUSH_DISABLE=1 git status
+```
+
+Remove the hook entirely with `sesshush uninstall`. That strips only sesshush's
+own marked block; the rest of your shell profile is left byte-for-byte intact.
 
 ## Config
 
@@ -131,12 +162,20 @@ Defaults:
   "matchesPerFile": 8,
   "diffContextLines": 2,
   "ultraCompact": false,
+  "stripComments": false,
   "telemetry": false,
   "colors": true
 }
 ```
 
 Telemetry is local only. No data is sent externally by default.
+
+Values outside a usable range (a negative `maxLines`, a zero `maxChars`) fall
+back to the default rather than being honoured, so a typo in this file cannot
+silently throw your command output away.
+
+Binary output is reported as `<binary output: N bytes, not shown>` rather than
+written through; pass `-v` when you need the raw bytes.
 
 ## Analytics
 

@@ -9,78 +9,177 @@ function humanSize(bytes) {
   return `${bytes}B`;
 }
 
-function gitStatus(output, config) {
-  const lines = splitLines(output).filter(Boolean);
-  let branch = null;
-  let staged = 0;
-  let unstaged = 0;
-  let untracked = 0;
-  const samples = { staged: [], unstaged: [], untracked: [] };
+const SAMPLE_CAP = 8;
+
+function pushSample(list, value) {
+  if (list.length < SAMPLE_CAP) list.push(value);
+}
+
+// git status --porcelain=v2 --branch. This format is documented as stable and
+// is not localised, unlike the default prose output. Counting it is exact:
+// each entry carries an explicit two-character <XY> staged/unstaged code, so a
+// file staged AND modified is counted once on each side rather than twice on
+// both, and untracked entries are their own record type.
+function parsePorcelainV2(lines) {
+  const state = {
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+    conflicts: 0,
+    samples: { staged: [], unstaged: [], untracked: [], conflicts: [] }
+  };
+
+  for (const line of lines) {
+    if (line.startsWith('# branch.head ')) {
+      const head = line.slice('# branch.head '.length).trim();
+      state.branch = head === '(detached)' ? 'HEAD (detached)' : head;
+      continue;
+    }
+    if (line.startsWith('# branch.ab ')) {
+      const ab = line.slice('# branch.ab '.length).trim().match(/^\+(\d+)\s+-(\d+)$/);
+      if (ab) {
+        state.ahead = Number(ab[1]);
+        state.behind = Number(ab[2]);
+      }
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+
+    const kind = line[0];
+
+    if (kind === '?') {
+      state.untracked += 1;
+      pushSample(state.samples.untracked, line.slice(2));
+      continue;
+    }
+    if (kind === '!') continue; // ignored
+
+    if (kind === 'u') {
+      state.conflicts += 1;
+      pushSample(state.samples.conflicts, line.split(' ').slice(10).join(' '));
+      continue;
+    }
+
+    if (kind === '1' || kind === '2') {
+      const fields = line.split(' ');
+      const xy = fields[1] || '..';
+      // Renames (kind 2) store "<new>\t<orig>"; report the new path.
+      const rest = fields.slice(kind === '1' ? 8 : 9).join(' ');
+      const file = rest.split('\t')[0];
+      if (xy[0] && xy[0] !== '.') {
+        state.staged += 1;
+        pushSample(state.samples.staged, file);
+      }
+      if (xy[1] && xy[1] !== '.') {
+        state.unstaged += 1;
+        pushSample(state.samples.unstaged, file);
+      }
+    }
+  }
+
+  return state;
+}
+
+// Fallback for the prose format, used when the caller passed their own status
+// flags so we did not get porcelain. Section-aware: the old code matched
+// "modified:" with two overlapping regexes and counted every modified file as
+// both staged and unstaged, and never saw untracked files at all.
+const PROSE_SECTIONS = [
+  [/^Changes to be committed:/, 'staged'],
+  [/^Changes not staged for commit:/, 'unstaged'],
+  [/^Untracked files:/, 'untracked'],
+  [/^Unmerged paths:/, 'conflicts']
+];
+
+function parseProseStatus(lines) {
+  const state = {
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+    conflicts: 0,
+    samples: { staged: [], unstaged: [], untracked: [], conflicts: [] }
+  };
+  let section = null;
 
   for (const raw of lines) {
     const line = normalizeLine(raw);
-    if (line.startsWith('On branch ')) branch = line.slice('On branch '.length);
-    if (line.startsWith('## ')) branch = line.slice(3).split('...')[0];
-    if (/^(new file|modified|deleted|renamed|copied):/.test(line)) {
-      staged += 1;
-      if (samples.staged.length < 8) samples.staged.push(line);
+    if (!line) continue;
+
+    if (line.startsWith('On branch ')) {
+      state.branch = line.slice('On branch '.length);
+      continue;
     }
-    if (/^(modified|deleted|both modified):/.test(line)) {
-      unstaged += 1;
-      if (samples.unstaged.length < 8) samples.unstaged.push(line);
+
+    const matched = PROSE_SECTIONS.find(([re]) => re.test(line));
+    if (matched) {
+      section = matched[1];
+      continue;
     }
-    if (line.startsWith('?? ')) {
-      untracked += 1;
-      if (samples.untracked.length < 8) samples.untracked.push(line.slice(3));
+
+    if (line.startsWith('(') || line.startsWith('no changes added')) continue;
+    if (!section) continue;
+
+    if (section === 'untracked') {
+      state[section] += 1;
+      pushSample(state.samples[section], line);
+      continue;
     }
-    if (line.startsWith('Untracked files:')) untracked ||= 0;
+
+    const entry = line.match(/^(?:new file|modified|deleted|renamed|copied|both modified|both added|deleted by us|deleted by them):\s*(.+)$/);
+    if (entry) {
+      state[section] += 1;
+      pushSample(state.samples[section], entry[1].trim());
+    }
   }
 
-  const porcelain = lines.some((line) => /^[ MARC?DU][ MARC?DU]\s+/.test(line));
-  if (porcelain) {
-    staged = 0;
-    unstaged = 0;
-    untracked = 0;
-    for (const raw of lines) {
-      const x = raw[0];
-      const y = raw[1];
-      const file = raw.slice(3);
-      if (raw.startsWith('## ')) continue;
-      if (raw.startsWith('?? ')) {
-        untracked += 1;
-        if (samples.untracked.length < 8) samples.untracked.push(file);
-        continue;
-      }
-      if (x !== ' ' && x !== '?') {
-        staged += 1;
-        if (samples.staged.length < 8) samples.staged.push(file);
-      }
-      if (y !== ' ' && y !== '?') {
-        unstaged += 1;
-        if (samples.unstaged.length < 8) samples.unstaged.push(file);
-      }
-    }
-  }
+  return state;
+}
+
+function gitStatus(output, config) {
+  const lines = splitLines(output).filter(Boolean);
+  const porcelainV2 = lines.some((line) => /^# branch\.|^[12u?!] /.test(line));
+  const state = porcelainV2 ? parsePorcelainV2(lines) : parseProseStatus(lines);
+
+  const tracking = [
+    state.ahead ? `ahead ${state.ahead}` : null,
+    state.behind ? `behind ${state.behind}` : null
+  ].filter(Boolean).join(', ');
 
   const out = [
-    `git status${branch ? ` on ${branch}` : ''}`,
-    `staged: ${staged}`,
-    `unstaged: ${unstaged}`,
-    `untracked: ${untracked}`
+    `git status${state.branch ? ` on ${state.branch}` : ''}${tracking ? ` (${tracking})` : ''}`,
+    `staged: ${state.staged}`,
+    `unstaged: ${state.unstaged}`,
+    `untracked: ${state.untracked}`
   ];
-  for (const [label, values] of Object.entries(samples)) {
-    if (values.length) out.push(`${label} sample: ${values.join(', ')}`);
+  if (state.conflicts) out.push(`conflicts: ${state.conflicts}`);
+
+  for (const label of ['staged', 'unstaged', 'untracked', 'conflicts']) {
+    const values = state.samples[label];
+    if (!values.length) continue;
+    const total = state[label];
+    const more = total > values.length ? `, ... (${total - values.length} more)` : '';
+    out.push(`${label}: ${values.join(', ')}${more}`);
+  }
+
+  if (!state.staged && !state.unstaged && !state.untracked && !state.conflicts) {
+    out.push('clean');
   }
 
   return {
     text: out.join('\n'),
     truncated: lines.length > out.length,
     explain: {
-      filter: 'git status',
+      filter: porcelainV2 ? 'git status (porcelain v2)' : 'git status (prose)',
       originalLines: lines.length,
       outputLines: out.length,
-      kept: ['branch name', 'staged/unstaged/untracked counts', 'limited file samples'],
-      omitted: ['full git status prose', 'extra file samples beyond the cap']
+      kept: ['branch name', 'ahead/behind', 'staged/unstaged/untracked/conflict counts', 'file names up to the cap'],
+      omitted: ['git hint prose', `file names beyond ${SAMPLE_CAP} per category`]
     }
   };
 }
@@ -332,10 +431,20 @@ function findOutput(output, config) {
   };
 }
 
+// Reading a file used to delete every line starting with //, # or --. That
+// silently dropped licence headers, TODO/compliance notes and, because "# " is
+// also a Markdown H1, document titles — while `## ` survived, so the damage was
+// inconsistent as well as invisible. An agent that reads a file in order to
+// edit it then works from mutilated content.
+//
+// Comments are content. They are kept by default; stripComments re-enables the
+// old behaviour for callers who genuinely want it.
 function readOutput(output, config) {
   const lines = splitLines(output);
   const filtered = [];
   let blank = false;
+  let stripped = 0;
+
   for (const raw of lines) {
     const line = raw.trimEnd();
     const trimmed = line.trim();
@@ -345,20 +454,29 @@ function readOutput(output, config) {
       continue;
     }
     blank = false;
-    if (/^(\/\/|#|--)\s/.test(trimmed)) continue;
-    if (/^\/\*|\*\/$/.test(trimmed)) continue;
+    if (config.stripComments) {
+      if (/^(\/\/|#|--)\s/.test(trimmed) || /^\/\*|\*\/$/.test(trimmed)) {
+        stripped += 1;
+        continue;
+      }
+    }
     filtered.push(line);
   }
+
   const result = genericTruncate(filtered.join('\n'), config);
   return {
     ...result,
     explain: {
-      filter: 'read',
+      filter: config.stripComments ? 'read (comments stripped)' : 'read',
       originalLines: lines.length,
       outputLines: splitLines(result.text).filter(Boolean).length,
-      kept: ['non-comment content', 'single blank-line separators'],
-      omitted: ['simple line comments', 'repeated blank lines', 'block comment delimiters'],
-      omittedLines: Math.max(0, lines.length - filtered.length)
+      kept: config.stripComments
+        ? ['non-comment content', 'single blank-line separators']
+        : ['file content including comments', 'single blank-line separators'],
+      omitted: config.stripComments
+        ? ['line comments', 'repeated blank lines', 'block comment delimiters']
+        : ['repeated blank lines'],
+      omittedLines: Math.max(0, lines.length - filtered.length - (stripped ? 0 : 0))
     }
   };
 }
@@ -458,7 +576,7 @@ function testOutput(output, config) {
 // surface errors, failing assertions and tracebacks rather than to summarize a
 // successful result. Every other filter would risk hiding the reason for the
 // failure (`gitOk`, for instance, reduces output to "ok push").
-const FAILURE_SAFE_FILTERS = new Set([testOutput]);
+const FAILURE_SAFE_FILTERS = new Set([testOutput, buildOutput]);
 
 export function isFailureSafe(filter) {
   return FAILURE_SAFE_FILTERS.has(filter);
@@ -481,7 +599,85 @@ function dispatch(command, args) {
   if (base === 'npm' && args[0] === 'test') return testOutput;
   if (base === 'npm' && args[0] === 'run' && ['build', 'test'].includes(args[1])) return testOutput;
   if ((base === 'pnpm' || base === 'yarn') && ['test', 'build'].includes(args[0])) return testOutput;
+
+  // Dedicated JS test runners.
+  if (['jest', 'vitest', 'mocha', 'ava', 'karma', 'cypress', 'playwright'].includes(base)) return testOutput;
+  if ((base === 'npx' || base === 'pnpm' || base === 'yarn') && ['jest', 'vitest', 'mocha', 'ava'].includes(args[0])) return testOutput;
+  // node --test
+  if (base === 'node' && args.includes('--test')) return testOutput;
+  // Python runners beyond pytest.
+  if (base === 'tox' || base === 'nox') return testOutput;
+  if (base === 'python' && args[0] === '-m' && ['pytest', 'unittest'].includes(args[1])) return testOutput;
+
+  // Compilers, build tools and linters: diagnostics, not pass/fail lists.
+  if (base === 'dotnet' && ['build', 'test', 'run', 'publish', 'restore'].includes(args[0])) return buildOutput;
+  if (base === 'cargo' && ['build', 'test', 'check', 'clippy', 'run'].includes(args[0])) return buildOutput;
+  if (base === 'go' && ['build', 'test', 'vet', 'run'].includes(args[0])) return buildOutput;
+  if (base === 'mvn' || base === 'mvnw') return buildOutput;
+  if (base === 'gradle' || base === 'gradlew') return buildOutput;
+  if (base === 'tsc' || base === 'eslint' || base === 'ruff' || base === 'flake8' || base === 'mypy' || base === 'pylint') return buildOutput;
+  if (base === 'make' || base === 'cmake' || base === 'ninja') return buildOutput;
+  if (base === 'npx' && ['tsc', 'eslint'].includes(args[0])) return buildOutput;
+  if ((base === 'npm' || base === 'pnpm' || base === 'yarn') && args[0] === 'run'
+    && ['lint', 'typecheck', 'type-check', 'compile'].includes(args[1])) return buildOutput;
+
   return null;
+}
+
+// Compiler and linter output cannot go through testOutput: a Go, Rust or
+// TypeScript diagnostic ("./main.go:5:2: undefined: foo") contains none of the
+// FAIL/ERROR keywords that filter looks for, so every error would be dropped as
+// "non-failing". Match the diagnostic shape instead — file:line:col or
+// file(line,col) — plus explicit error/warning wording and count summaries.
+const DIAGNOSTIC_LOCATION = /(?:^|\s)(?:[A-Za-z]:)?[^\s:()]+(?::\d+(?::\d+)?:|\(\d+(?:,\d+)?\):)/;
+const DIAGNOSTIC_WORDS = /\b(error|errors|warning|warnings|failed|failure|fatal|cannot|undefined|unresolved|panic|exception|expected|required)\b/i;
+const DIAGNOSTIC_SUMMARY = /\b\d+\s+(error|warning|problem|issue|test|failure)s?\b/i;
+
+function buildOutput(output, config) {
+  const lines = splitLines(output);
+  const kept = [];
+  let dropped = 0;
+  let keptPrevious = false;
+
+  for (const line of lines) {
+    const plain = normalizeLine(line);
+    if (!plain) {
+      keptPrevious = false;
+      continue;
+    }
+
+    const isDiagnostic = DIAGNOSTIC_LOCATION.test(plain)
+      || DIAGNOSTIC_WORDS.test(plain)
+      || DIAGNOSTIC_SUMMARY.test(plain);
+    // A diagnostic is followed by a snippet showing the offending code, drawn
+    // with a gutter ("4 | let x: i32 = ...") and a caret row. Those lines carry
+    // the detail, so stay inside the block until it ends.
+    const isGutter = /^\s*\d*\s*\|/.test(line);
+    const isContinuation = keptPrevious && (/^\s/.test(line) || isGutter);
+
+    if (isDiagnostic || isContinuation) {
+      kept.push(line);
+      keptPrevious = true;
+      continue;
+    }
+
+    dropped += 1;
+    keptPrevious = false;
+  }
+
+  if (dropped) kept.push(`... (${dropped} progress lines omitted)`);
+  const result = genericTruncate(kept.join('\n'), config);
+  return {
+    ...result,
+    explain: {
+      filter: 'build output',
+      originalLines: lines.filter(Boolean).length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['diagnostics with file/line positions', 'error and warning lines', 'counts and summaries'],
+      omitted: ['download, restore and progress noise'],
+      omittedLines: dropped
+    }
+  };
 }
 
 export function classify(command, args = [], { failed = false } = {}) {

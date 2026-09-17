@@ -125,6 +125,26 @@ function doctorReport() {
   return lines.join('\n');
 }
 
+// `git status` prose is localised and ambiguous — a file that is both staged
+// and modified prints "modified:" in two sections with no way to tell them
+// apart. Ask git for porcelain v2 instead, which is documented as stable and
+// carries an explicit staged/unstaged code per file. Skipped when the caller
+// already chose an output format.
+const GIT_STATUS_FORMAT_FLAGS = /^(-s|--short|--long|--porcelain(=.*)?|-z|--column(=.*)?|--no-column)$/;
+
+export function normalizeCommand(command, args) {
+  const base = command?.split(/[\\/]/).pop()?.toLowerCase();
+  if (base !== 'git' || args[0] !== 'status') return { command, args, rewritten: false };
+  if (args.slice(1).some((arg) => GIT_STATUS_FORMAT_FLAGS.test(arg))) {
+    return { command, args, rewritten: false };
+  }
+  return {
+    command,
+    args: ['status', '--porcelain=v2', '--branch', ...args.slice(1)],
+    rewritten: true
+  };
+}
+
 function metadata({ command, args, result, original, compressed, truncated }) {
   const originalBytes = byteLength(original);
   const compressedBytes = byteLength(compressed);
@@ -280,10 +300,11 @@ export async function main(argv) {
   const args = positional.slice(1);
   const commandName = command.split(/[\\/]/).pop();
 
+  const resolved = normalizeCommand(command, args);
   const internal = runInternal(command, args);
   const result = internal
     ? { ...internal, durationMs: 0, binary: false }
-    : runCommand(command, args);
+    : runCommand(resolved.command, resolved.args);
   const rawOutput = `${result.stdout}${result.stderr}`;
 
   if (result.error) {
@@ -298,8 +319,21 @@ export async function main(argv) {
   config.failed = failed;
   config.preserveTail = failed;
 
-  if (flags.verbose || config.excludedCommands.includes(commandName) || result.binary) {
+  if (flags.verbose || config.excludedCommands.includes(commandName)) {
     process.stdout.write(maybeStripAnsi(rawOutput, flags.colors && config.colors));
+    process.exit(result.status);
+  }
+
+  // Binary output used to be written through verbatim, which dumped the raw
+  // bytes into the agent's context — the opposite of the point. Describe it
+  // instead; `-v` still gives the real thing.
+  if (result.binary) {
+    process.stdout.write(`<binary output: ${byteLength(rawOutput)} bytes, not shown. Re-run with -v for raw output>\n`);
+    recordRun(commandName, rawOutput, '', {
+      exitCode: result.status,
+      durationMs: result.durationMs,
+      truncated: true
+    });
     process.exit(result.status);
   }
 

@@ -15,6 +15,7 @@
     "uninstall.sh",
     "uninstall.ps1",
     "vscode-extension/*.vsix",
+    "TESTING.md",
     "README.md"
   ],
   "scripts": {
