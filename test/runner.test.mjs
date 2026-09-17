@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { commandForTest, runCommand } from '../src/runner.js';
 
 test('Windows PowerShell commands are routed through powershell.exe', { skip: process.platform !== 'win32' }, () => {
@@ -34,9 +37,19 @@ test('regular commands preserve dot path arguments', () => {
 });
 
 test('runs PowerShell cmdlets on Windows', { skip: process.platform !== 'win32' }, () => {
-  const result = runCommand('Get-Content', ['-Raw', 'README.md']);
+  // Use a fixture rather than a file in the repo: this asserts that the
+  // PowerShell routing returns the file's contents, not what any doc says.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sesshush-runner-'));
+  const fixture = path.join(dir, 'fixture.txt');
+  fs.writeFileSync(fixture, '# Sesshush runner fixture\n');
 
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /# SavytoX for VS Code/);
-  assert.equal(result.stderr, '');
+  try {
+    const result = runCommand('Get-Content', ['-Raw', fixture]);
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /# Sesshush runner fixture/);
+    assert.equal(result.stderr, '');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

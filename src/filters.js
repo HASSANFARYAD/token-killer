@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/filters.js (npm run sync:engine)
 import { genericTruncate, normalizeLine, splitLines, dedupeConsecutive } from './utils.js';
 
 const NOISE_DIRS = new Set(['.git', 'node_modules', 'target', 'dist', 'build', '.next', '.cache', '__pycache__']);
@@ -9,78 +8,177 @@ function humanSize(bytes) {
   return `${bytes}B`;
 }
 
-function gitStatus(output, config) {
-  const lines = splitLines(output).filter(Boolean);
-  let branch = null;
-  let staged = 0;
-  let unstaged = 0;
-  let untracked = 0;
-  const samples = { staged: [], unstaged: [], untracked: [] };
+const SAMPLE_CAP = 8;
+
+function pushSample(list, value) {
+  if (list.length < SAMPLE_CAP) list.push(value);
+}
+
+// git status --porcelain=v2 --branch. This format is documented as stable and
+// is not localised, unlike the default prose output. Counting it is exact:
+// each entry carries an explicit two-character <XY> staged/unstaged code, so a
+// file staged AND modified is counted once on each side rather than twice on
+// both, and untracked entries are their own record type.
+function parsePorcelainV2(lines) {
+  const state = {
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+    conflicts: 0,
+    samples: { staged: [], unstaged: [], untracked: [], conflicts: [] }
+  };
+
+  for (const line of lines) {
+    if (line.startsWith('# branch.head ')) {
+      const head = line.slice('# branch.head '.length).trim();
+      state.branch = head === '(detached)' ? 'HEAD (detached)' : head;
+      continue;
+    }
+    if (line.startsWith('# branch.ab ')) {
+      const ab = line.slice('# branch.ab '.length).trim().match(/^\+(\d+)\s+-(\d+)$/);
+      if (ab) {
+        state.ahead = Number(ab[1]);
+        state.behind = Number(ab[2]);
+      }
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+
+    const kind = line[0];
+
+    if (kind === '?') {
+      state.untracked += 1;
+      pushSample(state.samples.untracked, line.slice(2));
+      continue;
+    }
+    if (kind === '!') continue; // ignored
+
+    if (kind === 'u') {
+      state.conflicts += 1;
+      pushSample(state.samples.conflicts, line.split(' ').slice(10).join(' '));
+      continue;
+    }
+
+    if (kind === '1' || kind === '2') {
+      const fields = line.split(' ');
+      const xy = fields[1] || '..';
+      // Renames (kind 2) store "<new>\t<orig>"; report the new path.
+      const rest = fields.slice(kind === '1' ? 8 : 9).join(' ');
+      const file = rest.split('\t')[0];
+      if (xy[0] && xy[0] !== '.') {
+        state.staged += 1;
+        pushSample(state.samples.staged, file);
+      }
+      if (xy[1] && xy[1] !== '.') {
+        state.unstaged += 1;
+        pushSample(state.samples.unstaged, file);
+      }
+    }
+  }
+
+  return state;
+}
+
+// Fallback for the prose format, used when the caller passed their own status
+// flags so we did not get porcelain. Section-aware: the old code matched
+// "modified:" with two overlapping regexes and counted every modified file as
+// both staged and unstaged, and never saw untracked files at all.
+const PROSE_SECTIONS = [
+  [/^Changes to be committed:/, 'staged'],
+  [/^Changes not staged for commit:/, 'unstaged'],
+  [/^Untracked files:/, 'untracked'],
+  [/^Unmerged paths:/, 'conflicts']
+];
+
+function parseProseStatus(lines) {
+  const state = {
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+    conflicts: 0,
+    samples: { staged: [], unstaged: [], untracked: [], conflicts: [] }
+  };
+  let section = null;
 
   for (const raw of lines) {
     const line = normalizeLine(raw);
-    if (line.startsWith('On branch ')) branch = line.slice('On branch '.length);
-    if (line.startsWith('## ')) branch = line.slice(3).split('...')[0];
-    if (/^(new file|modified|deleted|renamed|copied):/.test(line)) {
-      staged += 1;
-      if (samples.staged.length < 8) samples.staged.push(line);
+    if (!line) continue;
+
+    if (line.startsWith('On branch ')) {
+      state.branch = line.slice('On branch '.length);
+      continue;
     }
-    if (/^(modified|deleted|both modified):/.test(line)) {
-      unstaged += 1;
-      if (samples.unstaged.length < 8) samples.unstaged.push(line);
+
+    const matched = PROSE_SECTIONS.find(([re]) => re.test(line));
+    if (matched) {
+      section = matched[1];
+      continue;
     }
-    if (line.startsWith('?? ')) {
-      untracked += 1;
-      if (samples.untracked.length < 8) samples.untracked.push(line.slice(3));
+
+    if (line.startsWith('(') || line.startsWith('no changes added')) continue;
+    if (!section) continue;
+
+    if (section === 'untracked') {
+      state[section] += 1;
+      pushSample(state.samples[section], line);
+      continue;
     }
-    if (line.startsWith('Untracked files:')) untracked ||= 0;
+
+    const entry = line.match(/^(?:new file|modified|deleted|renamed|copied|both modified|both added|deleted by us|deleted by them):\s*(.+)$/);
+    if (entry) {
+      state[section] += 1;
+      pushSample(state.samples[section], entry[1].trim());
+    }
   }
 
-  const porcelain = lines.some((line) => /^[ MARC?DU][ MARC?DU]\s+/.test(line));
-  if (porcelain) {
-    staged = 0;
-    unstaged = 0;
-    untracked = 0;
-    for (const raw of lines) {
-      const x = raw[0];
-      const y = raw[1];
-      const file = raw.slice(3);
-      if (raw.startsWith('## ')) continue;
-      if (raw.startsWith('?? ')) {
-        untracked += 1;
-        if (samples.untracked.length < 8) samples.untracked.push(file);
-        continue;
-      }
-      if (x !== ' ' && x !== '?') {
-        staged += 1;
-        if (samples.staged.length < 8) samples.staged.push(file);
-      }
-      if (y !== ' ' && y !== '?') {
-        unstaged += 1;
-        if (samples.unstaged.length < 8) samples.unstaged.push(file);
-      }
-    }
-  }
+  return state;
+}
+
+function gitStatus(output, config) {
+  const lines = splitLines(output).filter(Boolean);
+  const porcelainV2 = lines.some((line) => /^# branch\.|^[12u?!] /.test(line));
+  const state = porcelainV2 ? parsePorcelainV2(lines) : parseProseStatus(lines);
+
+  const tracking = [
+    state.ahead ? `ahead ${state.ahead}` : null,
+    state.behind ? `behind ${state.behind}` : null
+  ].filter(Boolean).join(', ');
 
   const out = [
-    `git status${branch ? ` on ${branch}` : ''}`,
-    `staged: ${staged}`,
-    `unstaged: ${unstaged}`,
-    `untracked: ${untracked}`
+    `git status${state.branch ? ` on ${state.branch}` : ''}${tracking ? ` (${tracking})` : ''}`,
+    `staged: ${state.staged}`,
+    `unstaged: ${state.unstaged}`,
+    `untracked: ${state.untracked}`
   ];
-  for (const [label, values] of Object.entries(samples)) {
-    if (values.length) out.push(`${label} sample: ${values.join(', ')}`);
+  if (state.conflicts) out.push(`conflicts: ${state.conflicts}`);
+
+  for (const label of ['staged', 'unstaged', 'untracked', 'conflicts']) {
+    const values = state.samples[label];
+    if (!values.length) continue;
+    const total = state[label];
+    const more = total > values.length ? `, ... (${total - values.length} more)` : '';
+    out.push(`${label}: ${values.join(', ')}${more}`);
+  }
+
+  if (!state.staged && !state.unstaged && !state.untracked && !state.conflicts) {
+    out.push('clean');
   }
 
   return {
     text: out.join('\n'),
     truncated: lines.length > out.length,
     explain: {
-      filter: 'git status',
+      filter: porcelainV2 ? 'git status (porcelain v2)' : 'git status (prose)',
       originalLines: lines.length,
       outputLines: out.length,
-      kept: ['branch name', 'staged/unstaged/untracked counts', 'limited file samples'],
-      omitted: ['full git status prose', 'extra file samples beyond the cap']
+      kept: ['branch name', 'ahead/behind', 'staged/unstaged/untracked/conflict counts', 'file names up to the cap'],
+      omitted: ['git hint prose', `file names beyond ${SAMPLE_CAP} per category`]
     }
   };
 }

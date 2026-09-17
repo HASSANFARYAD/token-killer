@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/cli.js (npm run sync:engine)
 import { spawnSync } from 'node:child_process';
 import { filterOutput } from './filters.js';
 import { runAgent } from './agent.js';

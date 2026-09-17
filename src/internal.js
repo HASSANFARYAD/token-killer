@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/internal.js (npm run sync:engine)
 import fs from 'node:fs';
 import path from 'node:path';
 

@@ -2,11 +2,27 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { configDir } from './config.js';
 
 const START = '# >>> sesshush hook >>>';
 const END = '# <<< sesshush hook <<<';
+const CODEX_START = '# >>> sesshush codex auto hook >>>';
+const CODEX_END = '# <<< sesshush codex auto hook <<<';
+const ZSHENV_START = '# >>> sesshush codex shell loader >>>';
+const ZSHENV_END = '# <<< sesshush codex shell loader <<<';
+
+// Marker pairs left behind by earlier releases. Reinstall and uninstall strip
+// these too, so upgrading does not leave a second, stale wrapper behind.
+const LEGACY_MARKERS = [
+  ['# >>> rtk-node hook >>>', '# <<< rtk-node hook <<<'],
+  ['# >>> noisegate hook >>>', '# <<< noisegate hook <<<'],
+  ['# >>> rtk-node codex auto hook >>>', '# <<< rtk-node codex auto hook <<<'],
+  ['# >>> rtk-node codex shell loader >>>', '# <<< rtk-node codex shell loader <<<']
+];
+
 const POSIX_COMMANDS = ['git', 'rg', 'grep', 'pytest', 'npm', 'ls', 'find', 'cat'];
 const POWERSHELL_COMMANDS = ['git', 'rg', 'grep', 'pytest', 'npm'];
+
 const SESSHUSH_MD = `# Sesshush
 
 Use \`sesshush\` for shell commands that may produce noisy output.
@@ -42,17 +58,96 @@ const AGENT_DIRS = [
   { name: 'claude', dir: '.claude' }
 ];
 
-function hookBlock(shell) {
+function shellCommand(command) {
+  return command || 'sesshush';
+}
+
+function posixCommandCheck(command) {
+  return `${command} --version >/dev/null 2>&1`;
+}
+
+function markedBlock(start, end, body) {
+  return [start, body, end].join('\n');
+}
+
+function escapeRe(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function removeMarkedBlock(content, start, end) {
+  const re = new RegExp(`\\n?${escapeRe(start)}[\\s\\S]*?${escapeRe(end)}\\n?`, 'g');
+  return content.replace(re, '\n').trimEnd();
+}
+
+function posixFunctionBlock(cmd, sesshush) {
+  return [
+    `${cmd}() {`,
+    '  if [ -n "$SESSHUSH_ACTIVE" ] || [ -n "$SESSHUSH_DISABLE" ] || [ -n "$RTK_NODE_ACTIVE" ] || [ -n "$RTK_NODE_DISABLE" ]; then',
+    `    command ${cmd} "$@"`,
+    `  elif ${posixCommandCheck(sesshush)}; then`,
+    `    ${sesshush} ${cmd} "$@"`,
+    '  else',
+    `    command ${cmd} "$@"`,
+    '  fi',
+    '}'
+  ].join('\n');
+}
+
+export function codexAutoHookPath() {
+  return path.join(configDir(), 'codex-auto-hook.zsh');
+}
+
+function zshenvPath() {
+  return path.join(os.homedir(), '.zshenv');
+}
+
+export function codexAutoHookBlock({ command } = {}) {
+  const sesshush = shellCommand(command);
+  return markedBlock(
+    CODEX_START,
+    CODEX_END,
+    [
+      '# Sesshush auto-routing for Codex/VS Code command shells.',
+      '# Set SESSHUSH_DISABLE=1 to bypass the wrapper for exact-output debugging.',
+      'export SESSHUSH_HOOK=1',
+      ...POSIX_COMMANDS.map((cmd) => posixFunctionBlock(cmd, sesshush))
+    ].join('\n')
+  );
+}
+
+export function zshenvLoaderBlock() {
+  return markedBlock(
+    ZSHENV_START,
+    ZSHENV_END,
+    [
+      '# Load Sesshush routing for Codex/VS Code managed zsh shells.',
+      '# This keeps normal system zsh scripts unchanged unless they run under those hosts.',
+      'if [[ -n "${CODEX_THREAD_ID:-}" || "${CODEX_INTERNAL_ORIGINATOR_OVERRIDE:-}" == codex_* || -n "${VSCODE_IPC_HOOK:-}" ]]; then',
+      '  __sesshush_codex_auto_hook="${XDG_CONFIG_HOME:-$HOME/.config}/sesshush/codex-auto-hook.zsh"',
+      '  if [[ -r "$__sesshush_codex_auto_hook" ]]; then',
+      '    source "$__sesshush_codex_auto_hook"',
+      '  fi',
+      '  unset __sesshush_codex_auto_hook',
+      'fi'
+    ].join('\n')
+  );
+}
+
+export function hookBlock(shell, { command } = {}) {
+  const sesshush = shellCommand(command);
+
   if (shell === 'fish') {
     return [
       START,
       'set -gx SESSHUSH_HOOK 1',
       ...POSIX_COMMANDS.map((cmd) => [
         `function ${cmd}`,
-        '  if test -n "$SESSHUSH_ACTIVE"',
+        '  if test -n "$SESSHUSH_ACTIVE"; or test -n "$SESSHUSH_DISABLE"; or test -n "$RTK_NODE_ACTIVE"; or test -n "$RTK_NODE_DISABLE"',
         `    command ${cmd} $argv`,
+        `  else if ${sesshush} --version >/dev/null 2>&1`,
+        `    ${sesshush} ${cmd} $argv`,
         '  else',
-        `    sesshush ${cmd} $argv`,
+        `    command ${cmd} $argv`,
         '  end',
         'end'
       ].join('\n')),
@@ -73,10 +168,23 @@ function hookBlock(shell) {
       '$env:SESSHUSH_HOOK = "1"',
       ...POWERSHELL_COMMANDS.map((cmd) => [
         `function global:${cmd} {`,
-        '  if ($env:SESSHUSH_ACTIVE) {',
+        '  if ($env:SESSHUSH_ACTIVE -or $env:SESSHUSH_DISABLE -or $env:RTK_NODE_ACTIVE -or $env:RTK_NODE_DISABLE) {',
         `    & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
         '  } else {',
-        `    & sesshush ${cmd} @args`,
+        // The command may be a quoted bundled-Node invocation with spaces in
+        // the path, so probe it by running it rather than with Get-Command.
+        '    $sesshushAvailable = $false',
+        '    try {',
+        `      ${sesshush} --version *> $null`,
+        '      $sesshushAvailable = ($LASTEXITCODE -eq 0)',
+        '    } catch {',
+        '      $sesshushAvailable = $false',
+        '    }',
+        '    if ($sesshushAvailable) {',
+        `      ${sesshush} ${cmd} @args`,
+        '    } else {',
+        `      & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
+        '    }',
         '  }',
         '}'
       ].join('\n')),
@@ -87,15 +195,7 @@ function hookBlock(shell) {
   return [
     START,
     'export SESSHUSH_HOOK=1',
-    ...POSIX_COMMANDS.map((cmd) => [
-      `${cmd}() {`,
-      '  if [ -n "$SESSHUSH_ACTIVE" ]; then',
-      `    command ${cmd} "$@"`,
-      '  else',
-      `    sesshush ${cmd} "$@"`,
-      '  fi',
-      '}'
-    ].join('\n')),
+    ...POSIX_COMMANDS.map((cmd) => posixFunctionBlock(cmd, sesshush)),
     END
   ].join('\n');
 }
@@ -108,29 +208,92 @@ function detectShell() {
   return 'bash';
 }
 
-function profilePath(shell) {
+function profilePaths(shell) {
   const home = os.homedir();
-  if (shell === 'fish') return path.join(home, '.config', 'fish', 'config.fish');
-  if (shell === 'zsh') return path.join(home, '.zshrc');
+  if (shell === 'fish') return [path.join(home, '.config', 'fish', 'config.fish')];
+  if (shell === 'zsh') return [path.join(home, '.zshrc')];
   if (shell === 'powershell') {
-    const doc = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Documents') : home;
-    return path.join(doc, 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+    const documentRoot = path.join(process.env.USERPROFILE || home, 'Documents');
+    return [
+      path.join(documentRoot, 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
+      path.join(documentRoot, 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1')
+    ];
   }
-  return path.join(home, '.bashrc');
+  return [path.join(home, '.bashrc')];
 }
 
 function removeExisting(content) {
-  const re = new RegExp(`\\n?${START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'g');
-  return content.replace(re, '\n').trimEnd();
+  let next = removeMarkedBlock(content, START, END);
+  for (const [start, end] of LEGACY_MARKERS) {
+    next = removeMarkedBlock(next, start, end);
+  }
+  return next;
 }
 
-export function installHook({ shell = detectShell(), global = false, hookOnly = false } = {}) {
-  const target = profilePath(shell);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const current = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
-  const next = `${removeExisting(current)}\n\n${hookBlock(shell)}\n`;
-  fs.writeFileSync(target, next);
-  return { shell, profile: target, global, hookOnly };
+function installCodexAutoHook({ command = '' } = {}) {
+  const autoHookTarget = codexAutoHookPath();
+  fs.mkdirSync(path.dirname(autoHookTarget), { recursive: true });
+  fs.writeFileSync(autoHookTarget, `${codexAutoHookBlock({ command })}\n`);
+
+  const loaderTarget = zshenvPath();
+  const current = fs.existsSync(loaderTarget) ? fs.readFileSync(loaderTarget, 'utf8') : '';
+  const next = `${removeExisting(removeMarkedBlock(current, ZSHENV_START, ZSHENV_END))}\n\n${zshenvLoaderBlock()}\n`;
+  fs.writeFileSync(loaderTarget, next);
+
+  return { autoHook: autoHookTarget, loader: loaderTarget };
+}
+
+function uninstallCodexAutoHook() {
+  const loaderTarget = zshenvPath();
+  let loaderChanged = false;
+
+  if (fs.existsSync(loaderTarget)) {
+    const current = fs.readFileSync(loaderTarget, 'utf8');
+    const next = removeExisting(removeMarkedBlock(current, ZSHENV_START, ZSHENV_END));
+    fs.writeFileSync(loaderTarget, next ? `${next}\n` : '');
+    loaderChanged = current !== next;
+  }
+
+  const autoHookTarget = codexAutoHookPath();
+  let autoHookChanged = false;
+  if (fs.existsSync(autoHookTarget)) {
+    fs.unlinkSync(autoHookTarget);
+    autoHookChanged = true;
+  }
+
+  return { autoHook: autoHookTarget, loader: loaderTarget, changed: loaderChanged || autoHookChanged };
+}
+
+export function installHook({ shell = detectShell(), global = false, hookOnly = false, command = '' } = {}) {
+  const targets = profilePaths(shell);
+  const block = hookBlock(shell, { command });
+
+  for (const target of targets) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const current = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
+    const next = `${removeExisting(current)}\n\n${block}\n`;
+    fs.writeFileSync(target, next);
+  }
+
+  const codexAutoHook = shell === 'zsh' ? installCodexAutoHook({ command }) : null;
+  return { shell, profile: targets[0], profiles: targets, codexAutoHook, global, hookOnly };
+}
+
+export function uninstallHook({ shell = detectShell() } = {}) {
+  const targets = profilePaths(shell);
+  const codexAutoHook = shell === 'zsh' ? uninstallCodexAutoHook() : null;
+  let changed = Boolean(codexAutoHook?.changed);
+
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+
+    const current = fs.readFileSync(target, 'utf8');
+    const next = removeExisting(current);
+    fs.writeFileSync(target, next ? `${next}\n` : '');
+    changed = changed || current !== next;
+  }
+
+  return { shell, profile: targets[0], profiles: targets, codexAutoHook, changed };
 }
 
 function installAgentInstructionsForDir(root) {
@@ -161,28 +324,27 @@ function uninstallAgentInstructionsForDir(root) {
   return { sesshushPath, agentsPath };
 }
 
-export function installAgentInstructions({ global = false, agents = AGENT_DIRS.map(a => a.name) } = {}) {
-  const results = [];
-  const dirs = AGENT_DIRS.filter(a => agents.includes(a.name));
-  const targets = global ? dirs.map(a => ({ name: a.name, root: path.join(os.homedir(), a.dir) }))
-    : [...dirs.map(a => ({ name: a.name, root: path.join(process.cwd(), a.dir) })), { name: 'cwd', root: process.cwd() }];
-  for (const { name, root } of targets) {
-    const result = installAgentInstructionsForDir(root);
-    results.push({ agent: name, ...result });
-  }
-  return results;
+function agentTargets({ global, agents }) {
+  const dirs = AGENT_DIRS.filter((agent) => agents.includes(agent.name));
+  if (global) return dirs.map((agent) => ({ name: agent.name, root: path.join(os.homedir(), agent.dir) }));
+  return [
+    ...dirs.map((agent) => ({ name: agent.name, root: path.join(process.cwd(), agent.dir) })),
+    { name: 'cwd', root: process.cwd() }
+  ];
 }
 
-export function uninstallAgentInstructions({ global = false, agents = AGENT_DIRS.map(a => a.name) } = {}) {
-  const results = [];
-  const dirs = AGENT_DIRS.filter(a => agents.includes(a.name));
-  const targets = global ? dirs.map(a => ({ name: a.name, root: path.join(os.homedir(), a.dir) }))
-    : [...dirs.map(a => ({ name: a.name, root: path.join(process.cwd(), a.dir) })), { name: 'cwd', root: process.cwd() }];
-  for (const { name, root } of targets) {
-    const result = uninstallAgentInstructionsForDir(root);
-    results.push({ agent: name, ...result });
-  }
-  return results;
+export function installAgentInstructions({ global = false, agents = AGENT_DIRS.map((a) => a.name) } = {}) {
+  return agentTargets({ global, agents }).map(({ name, root }) => ({
+    agent: name,
+    ...installAgentInstructionsForDir(root)
+  }));
+}
+
+export function uninstallAgentInstructions({ global = false, agents = AGENT_DIRS.map((a) => a.name) } = {}) {
+  return agentTargets({ global, agents }).map(({ name, root }) => ({
+    agent: name,
+    ...uninstallAgentInstructionsForDir(root)
+  }));
 }
 
 export function installCodexInstructions({ global = false } = {}) {
@@ -194,16 +356,6 @@ export function uninstallCodexInstructions({ global = false } = {}) {
 }
 
 const VSCODE_EXTENSION_ID = 'sesshush-token-savings';
-
-function vsixPath() {
-  const dir = path.dirname(new URL(import.meta.url).pathname);
-  const parent = path.resolve(dir, '..');
-  const candidates = [
-    path.join(parent, 'vscode-extension', '*.vsix'),
-    path.join(parent, 'vscode-extension', `sesshush-token-savings-*.vsix`)
-  ];
-  return candidates;
-}
 
 function vsCodeAvailable() {
   try {
@@ -222,13 +374,11 @@ export function installVscodeExtension() {
   if (!vsCodeAvailable()) return { installed: false, reason: 'VS Code CLI not found' };
 
   const dir = path.dirname(new URL(import.meta.url).pathname);
-  const parent = path.resolve(dir, '..');
-  const vsixDir = path.join(parent, 'vscode-extension');
+  const vsixDir = path.join(path.resolve(dir, '..'), 'vscode-extension');
 
   let found = null;
   try {
-    const files = fs.readdirSync(vsixDir);
-    for (const file of files) {
+    for (const file of fs.readdirSync(vsixDir)) {
       if (file.endsWith('.vsix')) {
         found = path.join(vsixDir, file);
         break;
@@ -272,13 +422,4 @@ export function uninstallVscodeExtension() {
   } catch (error) {
     return { uninstalled: false, reason: error.message };
   }
-}
-
-export function uninstallHook({ shell = detectShell() } = {}) {
-  const target = profilePath(shell);
-  if (!fs.existsSync(target)) return { shell, profile: target, changed: false };
-  const current = fs.readFileSync(target, 'utf8');
-  const next = removeExisting(current);
-  fs.writeFileSync(target, next ? `${next}\n` : '');
-  return { shell, profile: target, changed: current !== next };
 }

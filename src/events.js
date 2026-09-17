@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/events.js (npm run sync:engine)
 const TOKEN_ACCURACY = new Set(['exact', 'estimated', 'unknown']);
 const TOKEN_METHOD = new Set(['provider_reported', 'cli_metadata', 'compression_estimate', 'unknown']);
 

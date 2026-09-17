@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/agent.js (npm run sync:engine)
 import { spawn, spawnSync } from 'node:child_process';
 import { currentSessionId, formatSessionGain } from './stats.js';
 

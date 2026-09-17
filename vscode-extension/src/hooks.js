@@ -1,43 +1,66 @@
+// GENERATED FILE - do not edit. Source: src/hooks.js (npm run sync:engine)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { configDir } from './config.js';
 
-const START = '# >>> rtk-node hook >>>';
-const END = '# <<< rtk-node hook <<<';
-const CODEX_START = '# >>> rtk-node codex auto hook >>>';
-const CODEX_END = '# <<< rtk-node codex auto hook <<<';
-const ZSHENV_START = '# >>> rtk-node codex shell loader >>>';
-const ZSHENV_END = '# <<< rtk-node codex shell loader <<<';
+const START = '# >>> sesshush hook >>>';
+const END = '# <<< sesshush hook <<<';
+const CODEX_START = '# >>> sesshush codex auto hook >>>';
+const CODEX_END = '# <<< sesshush codex auto hook <<<';
+const ZSHENV_START = '# >>> sesshush codex shell loader >>>';
+const ZSHENV_END = '# <<< sesshush codex shell loader <<<';
+
+// Marker pairs left behind by earlier releases. Reinstall and uninstall strip
+// these too, so upgrading does not leave a second, stale wrapper behind.
+const LEGACY_MARKERS = [
+  ['# >>> rtk-node hook >>>', '# <<< rtk-node hook <<<'],
+  ['# >>> noisegate hook >>>', '# <<< noisegate hook <<<'],
+  ['# >>> rtk-node codex auto hook >>>', '# <<< rtk-node codex auto hook <<<'],
+  ['# >>> rtk-node codex shell loader >>>', '# <<< rtk-node codex shell loader <<<']
+];
+
 const POSIX_COMMANDS = ['git', 'rg', 'grep', 'pytest', 'npm', 'ls', 'find', 'cat'];
 const POWERSHELL_COMMANDS = ['git', 'rg', 'grep', 'pytest', 'npm'];
-const RTK_MD = `# RTK Node
 
-Use \`rtk-node\` for shell commands that may produce noisy output.
+const SESSHUSH_MD = `# Sesshush
+
+Use \`sesshush\` for shell commands that may produce noisy output.
 
 Preferred command forms:
-- \`rtk-node git status\`
-- \`rtk-node git diff\`
-- \`rtk-node git log --oneline -10\`
-- \`rtk-node ls .\`
-- \`rtk-node find "*.js" .\`
-- \`rtk-node read path/to/file\`
-- \`rtk-node rg "pattern" .\`
-- \`rtk-node pytest -q\`
-- \`rtk-node npm test\`
+- \`sesshush git status\`
+- \`sesshush git diff\`
+- \`sesshush git log --oneline -10\`
+- \`sesshush ls .\`
+- \`sesshush find "*.js" .\`
+- \`sesshush read path/to/file\`
+- \`sesshush rg "pattern" .\`
+- \`sesshush pytest -q\`
+- \`sesshush npm test\`
 
-Use \`rtk-node -v <command>\` only when raw output is required.
+Use \`sesshush -v <command>\` only when raw output is required.
+
+Set \`SESSHUSH_SESSION_ID\` (or \`RTK_SESSION_ID\`, \`OPENCODE_SESSION_ID\`, \`CLAUDE_SESSION_ID\`, \`CODEX_SESSION_ID\`, \`TERM_SESSION_ID\`) to group command runs into a session for token tracking.
 `;
 
-const AGENTS_BLOCK = `# RTK Node Command Output Compression
+const AGENTS_BLOCK = `# Sesshush Command Output Compression
 
-When running shell commands, prefer prefixing noisy commands with \`rtk-node\` so output is compact before it enters the model context. Use normal commands only when the unfiltered output is required.
+When running shell commands, prefer prefixing noisy commands with \`sesshush\` so output is compact before it enters the model context. Use normal commands only when the unfiltered output is required.
 
-Reference: @RTK.md
+Sesshush supports all AI coding agents: opencode, Claude Code, Codex, Cursor, and any terminal-based agent. Session tracking works via \`SESSHUSH_SESSION_ID\`, \`RTK_SESSION_ID\`, \`OPENCODE_SESSION_ID\`, \`CLAUDE_SESSION_ID\`, or \`CODEX_SESSION_ID\` environment variables.
+
+Reference: @SESSHUSH.md
 `;
+
+const AGENT_DIRS = [
+  { name: 'opencode', dir: '.opencode' },
+  { name: 'codex', dir: '.codex' },
+  { name: 'claude', dir: '.claude' }
+];
 
 function shellCommand(command) {
-  return command || 'rtk-node';
+  return command || 'sesshush';
 }
 
 function posixCommandCheck(command) {
@@ -48,18 +71,22 @@ function markedBlock(start, end, body) {
   return [start, body, end].join('\n');
 }
 
+function escapeRe(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function removeMarkedBlock(content, start, end) {
-  const re = new RegExp(`\\n?${start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'g');
+  const re = new RegExp(`\\n?${escapeRe(start)}[\\s\\S]*?${escapeRe(end)}\\n?`, 'g');
   return content.replace(re, '\n').trimEnd();
 }
 
-function posixFunctionBlock(cmd, rtkCommand) {
+function posixFunctionBlock(cmd, sesshush) {
   return [
     `${cmd}() {`,
-    '  if [ -n "$RTK_NODE_ACTIVE" ] || [ -n "$RTK_NODE_DISABLE" ]; then',
+    '  if [ -n "$SESSHUSH_ACTIVE" ] || [ -n "$SESSHUSH_DISABLE" ] || [ -n "$RTK_NODE_ACTIVE" ] || [ -n "$RTK_NODE_DISABLE" ]; then',
     `    command ${cmd} "$@"`,
-    `  elif ${posixCommandCheck(rtkCommand)}; then`,
-    `    ${rtkCommand} ${cmd} "$@"`,
+    `  elif ${posixCommandCheck(sesshush)}; then`,
+    `    ${sesshush} ${cmd} "$@"`,
     '  else',
     `    command ${cmd} "$@"`,
     '  fi',
@@ -76,15 +103,15 @@ function zshenvPath() {
 }
 
 export function codexAutoHookBlock({ command } = {}) {
-  const rtkCommand = shellCommand(command);
+  const sesshush = shellCommand(command);
   return markedBlock(
     CODEX_START,
     CODEX_END,
     [
-      '# RTK-Node auto-routing for Codex/VS Code command shells.',
-      '# Set RTK_NODE_DISABLE=1 to bypass the wrapper for exact-output debugging.',
-      'export RTK_NODE_HOOK=1',
-      ...POSIX_COMMANDS.map((cmd) => posixFunctionBlock(cmd, rtkCommand))
+      '# Sesshush auto-routing for Codex/VS Code command shells.',
+      '# Set SESSHUSH_DISABLE=1 to bypass the wrapper for exact-output debugging.',
+      'export SESSHUSH_HOOK=1',
+      ...POSIX_COMMANDS.map((cmd) => posixFunctionBlock(cmd, sesshush))
     ].join('\n')
   );
 }
@@ -94,32 +121,32 @@ export function zshenvLoaderBlock() {
     ZSHENV_START,
     ZSHENV_END,
     [
-      '# Load RTK-Node routing for Codex/VS Code managed zsh shells.',
+      '# Load Sesshush routing for Codex/VS Code managed zsh shells.',
       '# This keeps normal system zsh scripts unchanged unless they run under those hosts.',
       'if [[ -n "${CODEX_THREAD_ID:-}" || "${CODEX_INTERNAL_ORIGINATOR_OVERRIDE:-}" == codex_* || -n "${VSCODE_IPC_HOOK:-}" ]]; then',
-      '  __rtk_codex_auto_hook="${XDG_CONFIG_HOME:-$HOME/.config}/rtk-node/codex-auto-hook.zsh"',
-      '  if [[ -r "$__rtk_codex_auto_hook" ]]; then',
-      '    source "$__rtk_codex_auto_hook"',
+      '  __sesshush_codex_auto_hook="${XDG_CONFIG_HOME:-$HOME/.config}/sesshush/codex-auto-hook.zsh"',
+      '  if [[ -r "$__sesshush_codex_auto_hook" ]]; then',
+      '    source "$__sesshush_codex_auto_hook"',
       '  fi',
-      '  unset __rtk_codex_auto_hook',
+      '  unset __sesshush_codex_auto_hook',
       'fi'
     ].join('\n')
   );
 }
 
 export function hookBlock(shell, { command } = {}) {
-  const rtkCommand = shellCommand(command);
+  const sesshush = shellCommand(command);
 
   if (shell === 'fish') {
     return [
       START,
-      'set -gx RTK_NODE_HOOK 1',
+      'set -gx SESSHUSH_HOOK 1',
       ...POSIX_COMMANDS.map((cmd) => [
         `function ${cmd}`,
-        '  if test -n "$RTK_NODE_ACTIVE"; or test -n "$RTK_NODE_DISABLE"',
+        '  if test -n "$SESSHUSH_ACTIVE"; or test -n "$SESSHUSH_DISABLE"; or test -n "$RTK_NODE_ACTIVE"; or test -n "$RTK_NODE_DISABLE"',
         `    command ${cmd} $argv`,
-        `  else if ${rtkCommand} --version >/dev/null 2>&1`,
-        `    ${rtkCommand} ${cmd} $argv`,
+        `  else if ${sesshush} --version >/dev/null 2>&1`,
+        `    ${sesshush} ${cmd} $argv`,
         '  else',
         `    command ${cmd} $argv`,
         '  end',
@@ -139,21 +166,23 @@ export function hookBlock(shell, { command } = {}) {
     };
     return [
       START,
-      '$env:RTK_NODE_HOOK = "1"',
+      '$env:SESSHUSH_HOOK = "1"',
       ...POWERSHELL_COMMANDS.map((cmd) => [
         `function global:${cmd} {`,
-        '  if ($env:RTK_NODE_ACTIVE -or $env:RTK_NODE_DISABLE) {',
+        '  if ($env:SESSHUSH_ACTIVE -or $env:SESSHUSH_DISABLE -or $env:RTK_NODE_ACTIVE -or $env:RTK_NODE_DISABLE) {',
         `    & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
         '  } else {',
-        '    $rtkAvailable = $false',
+        // The command may be a quoted bundled-Node invocation with spaces in
+        // the path, so probe it by running it rather than with Get-Command.
+        '    $sesshushAvailable = $false',
         '    try {',
-        `      ${rtkCommand} --version *> $null`,
-        '      $rtkAvailable = ($LASTEXITCODE -eq 0)',
+        `      ${sesshush} --version *> $null`,
+        '      $sesshushAvailable = ($LASTEXITCODE -eq 0)',
         '    } catch {',
-        '      $rtkAvailable = $false',
+        '      $sesshushAvailable = $false',
         '    }',
-        '    if ($rtkAvailable) {',
-        `      ${rtkCommand} ${cmd} @args`,
+        '    if ($sesshushAvailable) {',
+        `      ${sesshush} ${cmd} @args`,
         '    } else {',
         `      & (Get-Command ${native[cmd]} -ErrorAction Stop).Source @args`,
         '    }',
@@ -166,8 +195,8 @@ export function hookBlock(shell, { command } = {}) {
 
   return [
     START,
-    'export RTK_NODE_HOOK=1',
-    ...POSIX_COMMANDS.map((cmd) => posixFunctionBlock(cmd, rtkCommand)),
+    'export SESSHUSH_HOOK=1',
+    ...POSIX_COMMANDS.map((cmd) => posixFunctionBlock(cmd, sesshush)),
     END
   ].join('\n');
 }
@@ -194,12 +223,12 @@ function profilePaths(shell) {
   return [path.join(home, '.bashrc')];
 }
 
-function profilePath(shell) {
-  return profilePaths(shell)[0];
-}
-
 function removeExisting(content) {
-  return removeMarkedBlock(content, START, END);
+  let next = removeMarkedBlock(content, START, END);
+  for (const [start, end] of LEGACY_MARKERS) {
+    next = removeMarkedBlock(next, start, end);
+  }
+  return next;
 }
 
 function installCodexAutoHook({ command = '' } = {}) {
@@ -209,7 +238,7 @@ function installCodexAutoHook({ command = '' } = {}) {
 
   const loaderTarget = zshenvPath();
   const current = fs.existsSync(loaderTarget) ? fs.readFileSync(loaderTarget, 'utf8') : '';
-  const next = `${removeMarkedBlock(current, ZSHENV_START, ZSHENV_END)}\n\n${zshenvLoaderBlock()}\n`;
+  const next = `${removeExisting(removeMarkedBlock(current, ZSHENV_START, ZSHENV_END))}\n\n${zshenvLoaderBlock()}\n`;
   fs.writeFileSync(loaderTarget, next);
 
   return { autoHook: autoHookTarget, loader: loaderTarget };
@@ -221,7 +250,7 @@ function uninstallCodexAutoHook() {
 
   if (fs.existsSync(loaderTarget)) {
     const current = fs.readFileSync(loaderTarget, 'utf8');
-    const next = removeMarkedBlock(current, ZSHENV_START, ZSHENV_END);
+    const next = removeExisting(removeMarkedBlock(current, ZSHENV_START, ZSHENV_END));
     fs.writeFileSync(loaderTarget, next ? `${next}\n` : '');
     loaderChanged = current !== next;
   }
@@ -251,21 +280,6 @@ export function installHook({ shell = detectShell(), global = false, hookOnly = 
   return { shell, profile: targets[0], profiles: targets, codexAutoHook, global, hookOnly };
 }
 
-export function installCodexInstructions({ global = false } = {}) {
-  const root = global ? path.join(os.homedir(), '.codex') : process.cwd();
-  fs.mkdirSync(root, { recursive: true });
-  const rtkPath = path.join(root, 'RTK.md');
-  const agentsPath = path.join(root, 'AGENTS.md');
-  fs.writeFileSync(rtkPath, RTK_MD);
-
-  const current = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf8') : '';
-  const next = current.includes('RTK Node Command Output Compression')
-    ? current
-    : `${current.trimEnd()}${current.trim() ? '\n\n' : ''}${AGENTS_BLOCK}`;
-  fs.writeFileSync(agentsPath, next);
-  return { root, rtkPath, agentsPath };
-}
-
 export function uninstallHook({ shell = detectShell() } = {}) {
   const targets = profilePaths(shell);
   const codexAutoHook = shell === 'zsh' ? uninstallCodexAutoHook() : null;
@@ -283,17 +297,130 @@ export function uninstallHook({ shell = detectShell() } = {}) {
   return { shell, profile: targets[0], profiles: targets, codexAutoHook, changed };
 }
 
-export function uninstallCodexInstructions({ global = false } = {}) {
-  const root = global ? path.join(os.homedir(), '.codex') : process.cwd();
-  const rtkPath = path.join(root, 'RTK.md');
+function installAgentInstructionsForDir(root) {
+  fs.mkdirSync(root, { recursive: true });
+  const sesshushPath = path.join(root, 'SESSHUSH.md');
   const agentsPath = path.join(root, 'AGENTS.md');
-  if (fs.existsSync(rtkPath)) fs.unlinkSync(rtkPath);
+  fs.writeFileSync(sesshushPath, SESSHUSH_MD);
+
+  const current = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf8') : '';
+  const next = current.includes('Sesshush Command Output Compression')
+    ? current
+    : `${current.trimEnd()}${current.trim() ? '\n\n' : ''}${AGENTS_BLOCK}`;
+  fs.writeFileSync(agentsPath, next);
+  return { sesshushPath, agentsPath };
+}
+
+function uninstallAgentInstructionsForDir(root) {
+  const sesshushPath = path.join(root, 'SESSHUSH.md');
+  const agentsPath = path.join(root, 'AGENTS.md');
+  if (fs.existsSync(sesshushPath)) fs.unlinkSync(sesshushPath);
   if (fs.existsSync(agentsPath)) {
     const current = fs.readFileSync(agentsPath, 'utf8');
     const next = current
-      .replace(/# RTK Node Command Output Compression[\s\S]*?Reference: @RTK\.md\n?/g, '')
+      .replace(/# Sesshush Command Output Compression[\s\S]*?Reference: @SESSHUSH\.md\n?/g, '')
       .trimEnd();
     fs.writeFileSync(agentsPath, next ? `${next}\n` : '');
   }
-  return { root, rtkPath, agentsPath };
+  return { sesshushPath, agentsPath };
+}
+
+function agentTargets({ global, agents }) {
+  const dirs = AGENT_DIRS.filter((agent) => agents.includes(agent.name));
+  if (global) return dirs.map((agent) => ({ name: agent.name, root: path.join(os.homedir(), agent.dir) }));
+  return [
+    ...dirs.map((agent) => ({ name: agent.name, root: path.join(process.cwd(), agent.dir) })),
+    { name: 'cwd', root: process.cwd() }
+  ];
+}
+
+export function installAgentInstructions({ global = false, agents = AGENT_DIRS.map((a) => a.name) } = {}) {
+  return agentTargets({ global, agents }).map(({ name, root }) => ({
+    agent: name,
+    ...installAgentInstructionsForDir(root)
+  }));
+}
+
+export function uninstallAgentInstructions({ global = false, agents = AGENT_DIRS.map((a) => a.name) } = {}) {
+  return agentTargets({ global, agents }).map(({ name, root }) => ({
+    agent: name,
+    ...uninstallAgentInstructionsForDir(root)
+  }));
+}
+
+export function installCodexInstructions({ global = false } = {}) {
+  return installAgentInstructions({ global, agents: ['codex'] });
+}
+
+export function uninstallCodexInstructions({ global = false } = {}) {
+  return uninstallAgentInstructions({ global, agents: ['codex'] });
+}
+
+const VSCODE_EXTENSION_ID = 'sesshush-token-savings';
+
+function vsCodeAvailable() {
+  try {
+    const result = spawnSync('code', ['--version'], {
+      stdio: 'pipe',
+      timeout: 3000,
+      windowsHide: true
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+export function installVscodeExtension() {
+  if (!vsCodeAvailable()) return { installed: false, reason: 'VS Code CLI not found' };
+
+  const dir = path.dirname(new URL(import.meta.url).pathname);
+  const vsixDir = path.join(path.resolve(dir, '..'), 'vscode-extension');
+
+  let found = null;
+  try {
+    for (const file of fs.readdirSync(vsixDir)) {
+      if (file.endsWith('.vsix')) {
+        found = path.join(vsixDir, file);
+        break;
+      }
+    }
+  } catch {
+    return { installed: false, reason: 'VSIX directory not found' };
+  }
+
+  if (!found) return { installed: false, reason: 'No VSIX file found' };
+
+  try {
+    const result = spawnSync('code', ['--install-extension', found], {
+      stdio: 'pipe',
+      timeout: 15000,
+      windowsHide: true
+    });
+    return {
+      installed: result.status === 0,
+      vsix: found,
+      stderr: result.status !== 0 ? result.stderr?.toString() : undefined
+    };
+  } catch (error) {
+    return { installed: false, reason: error.message };
+  }
+}
+
+export function uninstallVscodeExtension() {
+  if (!vsCodeAvailable()) return { uninstalled: false, reason: 'VS Code CLI not found' };
+
+  try {
+    const result = spawnSync('code', ['--uninstall-extension', VSCODE_EXTENSION_ID], {
+      stdio: 'pipe',
+      timeout: 15000,
+      windowsHide: true
+    });
+    return {
+      uninstalled: result.status === 0,
+      stderr: result.status !== 0 ? result.stderr?.toString() : undefined
+    };
+  } catch (error) {
+    return { uninstalled: false, reason: error.message };
+  }
 }

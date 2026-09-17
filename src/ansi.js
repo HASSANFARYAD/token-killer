@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/ansi.js (npm run sync:engine)
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 export function stripAnsi(text) {

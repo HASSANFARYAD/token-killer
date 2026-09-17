@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/config.js (npm run sync:engine)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

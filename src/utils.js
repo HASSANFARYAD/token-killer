@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/utils.js (npm run sync:engine)
 import { stripAnsi } from './ansi.js';
 
 export function splitLines(text) {

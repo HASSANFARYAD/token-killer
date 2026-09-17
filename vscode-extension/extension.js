@@ -103,12 +103,12 @@ function commandCandidates() {
     }
   };
 
-  const bundledCli = path.join(__dirname, 'bin', 'rtk-node.js');
+  const bundledCli = path.join(__dirname, 'bin', 'sesshush.js');
   if (fs.existsSync(bundledCli)) push(nodeCommand(), [bundledCli], 'bundled RTK CLI');
 
   if (configuredCommand) push(configuredCommand, [], 'configured rtk.command');
 
-  const localCli = path.join(workspaceCwd(), 'bin', 'rtk-node.js');
+  const localCli = path.join(workspaceCwd(), 'bin', 'sesshush.js');
   if (fs.existsSync(localCli)) push(nodeCommand(), [localCli], 'workspace RTK CLI');
 
   if (process.platform === 'win32') {
@@ -122,11 +122,11 @@ function commandCandidates() {
 }
 
 function bundledCliCommand() {
-  const bundledCli = path.join(__dirname, 'bin', 'rtk-node.js');
+  const bundledCli = path.join(__dirname, 'bin', 'sesshush.js');
   if (fs.existsSync(bundledCli)) {
     return commandLine([nodeCommand(), bundledCli]);
   }
-  return commandLine([process.platform === 'win32' ? 'rtk-node.cmd' : 'rtk-node']);
+  return commandLine([process.platform === 'win32' ? 'sesshush.cmd' : 'sesshush']);
 }
 
 function needsShellQuoting(value) {
@@ -365,7 +365,7 @@ async function contextStateSet() {
 }
 
 function bundledCliPath() {
-  return path.join(__dirname, 'bin', 'rtk-node.js');
+  return path.join(__dirname, 'bin', 'sesshush.js');
 }
 
 function installShellHook() {

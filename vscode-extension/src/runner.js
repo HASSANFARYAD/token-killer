@@ -1,3 +1,4 @@
+// GENERATED FILE - do not edit. Source: src/runner.js (npm run sync:engine)
 import { spawnSync } from 'node:child_process';
 import { isProbablyBinary } from './utils.js';
 
@@ -66,7 +67,7 @@ export function runCommand(command, args) {
     encoding: null,
     maxBuffer: 64 * 1024 * 1024,
     ...resolved.options,
-    env: { ...process.env, RTK_NODE_ACTIVE: '1' }
+    env: { ...process.env, SESSHUSH_ACTIVE: '1' }
   });
   const ended = process.hrtime.bigint();
   const durationMs = Number(ended - started) / 1_000_000;

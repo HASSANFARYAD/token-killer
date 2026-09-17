@@ -1,7 +1,7 @@
 {
   "name": "sesshush",
   "version": "1.0.0",
-  "description": "Sesshush — command output filter for AI coding agents. Compresses noisy CLI output, tracks token savings. Works with opencode, Codex, Claude Code, and more.",
+  "description": "Sesshush \u2014 command output filter for AI coding agents. Compresses noisy CLI output, tracks token savings. Works with opencode, Codex, Claude Code, and more.",
   "type": "module",
   "bin": {
     "sesshush": "./bin/sesshush.js"
@@ -9,6 +9,7 @@
   "files": [
     "bin",
     "src",
+    "scripts/sync-engine.mjs",
     "install.sh",
     "install.ps1",
     "uninstall.sh",
@@ -17,8 +18,11 @@
     "README.md"
   ],
   "scripts": {
-    "build:vsix": "cd vscode-extension && npx --yes @vscode/vsce package --allow-missing-repository 2>nul",
-    "test": "node --test"
+    "sync:engine": "node scripts/sync-engine.mjs",
+    "build:vsix": "node scripts/sync-engine.mjs && cd vscode-extension && npx --yes @vscode/vsce package --allow-missing-repository",
+    "test": "node --test \"test/*.test.mjs\" \"test/*.test.js\"",
+    "test:all": "node --test \"test/*.test.mjs\" \"test/*.test.js\" \"test/server/*.test.js\" \"vscode-extension/test/*.test.mjs\"",
+    "prepublishOnly": "node scripts/sync-engine.mjs --check && npm test"
   },
   "keywords": [
     "cli",

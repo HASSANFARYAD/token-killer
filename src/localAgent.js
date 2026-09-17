@@ -1,4 +1,3 @@
-// GENERATED FILE - do not edit. Source: src/localAgent.js (npm run sync:engine)
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:17687';
 
 function agentBaseUrl() {

@@ -9,11 +9,11 @@ import { chooseFinalOutputForTest } from '../src/cli.js';
 import { filterOutput } from '../src/filters.js';
 import { analyticsSnapshot, estimateTokens, recordRun } from '../src/stats.js';
 
-const extensionRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const cliPath = fileURLToPath(new URL('../bin/rtk-node.js', import.meta.url));
+const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const cliPath = fileURLToPath(new URL('../bin/sesshush.js', import.meta.url));
 
 function makeTempHome(name) {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `rtk-${name}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `sesshush-${name}-`));
 }
 
 function withAnalyticsHome(name, fn) {
@@ -50,7 +50,7 @@ test('happy path filters noisy command output and records positive token savings
   fs.writeFileSync(fixturePath, [...noisyLines, '', '', 'meaningful result'].join('\n'));
 
   const result = spawnSync(process.execPath, [cliPath, 'read', fixturePath], {
-    cwd: extensionRoot,
+    cwd: repoRoot,
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -65,7 +65,7 @@ test('happy path filters noisy command output and records positive token savings
   assert.match(result.stdout, /meaningful result/);
   assert.doesNotMatch(result.stdout, /generated noisy line/);
 
-  const analyticsPath = path.join(dataHome, 'rtk-node', 'analytics.json');
+  const analyticsPath = path.join(dataHome, 'sesshush', 'analytics.json');
   const analytics = JSON.parse(fs.readFileSync(analyticsPath, 'utf8'));
   const session = analytics.sessions['cli-happy-path'];
 
@@ -143,7 +143,7 @@ test('small outputs fall back to raw output when metadata would increase size', 
   const finalOutput = chooseFinalOutputForTest({
     rawOutput,
     body: 'ok',
-    meta: '\n--- rtk-node metadata ---\nsaved: 0.0%',
+    meta: '\n--- sesshush metadata ---\nsaved: 0.0%',
     explain: ''
   });
 
