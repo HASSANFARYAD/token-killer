@@ -73,7 +73,8 @@ test('package-manager test/build failures use test-output filtering', () => {
 });
 
 test('git status, diff, and log have command-specific filters', () => {
-  assert.equal(filterOutput('git', ['status'], '## main\n M file.js\n?? new.js', config).explain.filter, 'git status');
+  const statusOutput = '# branch.head main\n1 .M N... 100644 100644 100644 a b file.js\n? new.js';
+  assert.match(filterOutput('git', ['status'], statusOutput, config).explain.filter, /^git status/);
   assert.equal(filterOutput('git', ['diff'], 'diff --git a/a b/a\n@@ -1 +1 @@\n-old\n+new', config).explain.filter, 'git diff');
   assert.equal(filterOutput('git', ['log'], 'commit 1234567890abcdef\nAuthor: Test\n', config).explain.filter, 'git log');
 });

@@ -92,7 +92,10 @@ The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids rec
 
 ## Filters
 
-- `git status`: branch plus staged, unstaged, and untracked counts.
+- `git status`: branch, ahead/behind, and staged/unstaged/untracked/conflict
+  counts. Runs `git status --porcelain=v2` under the hood, so the counts are
+  exact and unaffected by locale. Pass your own format flag (`-s`, `--porcelain`,
+  `--long`) to keep git's output as-is.
 - `git diff`: filenames, hunk headers, changes, and limited context.
 - `rg` / `grep`: grouped by file with capped matches per file.
 - `pytest` / `npm test`: failures, tracebacks, error lines, and summaries.
@@ -112,6 +115,15 @@ Compression of a failure is deliberately conservative:
 - If a filter would leave a failed command with no output at all, the raw output
   is printed instead.
 - The exit code is always propagated unchanged.
+
+## Piping
+
+Stdin is passed through to the wrapped command, so `producer | sesshush consumer`
+works:
+
+```sh
+cat access.log | sesshush grep ERROR
+```
 
 ## Config
 

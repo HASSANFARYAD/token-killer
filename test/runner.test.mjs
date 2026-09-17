@@ -9,13 +9,13 @@ test('Windows PowerShell commands are routed through powershell.exe', { skip: pr
   const resolved = commandForTest('Get-Content', ['-Raw', 'README.md']);
 
   assert.equal(resolved.command, 'powershell.exe');
-  assert.deepEqual(resolved.args.slice(0, 5), [
+  assert.deepEqual(resolved.args.slice(0, 4), [
     '-NoProfile',
     '-ExecutionPolicy',
     'Bypass',
-    '-Command',
-    '& { Get-Content @args }'
+    '-Command'
   ]);
+  assert.match(resolved.args[4], /^& \{ .*Get-Content @args; .*\}$/);
   assert.deepEqual(resolved.args.slice(5), ['-Raw', 'README.md']);
   assert.equal(resolved.options.shell, false);
 });
