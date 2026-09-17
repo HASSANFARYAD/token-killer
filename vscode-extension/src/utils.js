@@ -48,6 +48,23 @@ export function dedupeConsecutive(lines) {
   return out;
 }
 
+// Cutting a string by UTF-16 code units can land between the two halves of a
+// surrogate pair, leaving a lone surrogate that encodes to U+FFFD and shows up
+// as mojibake. Nudge the cut off the boundary.
+function cutAfter(text, index) {
+  if (index <= 0 || index >= text.length) return index;
+  const code = text.charCodeAt(index);
+  return code >= 0xDC00 && code <= 0xDFFF ? index - 1 : index;
+}
+
+function headSlice(text, length) {
+  return text.slice(0, cutAfter(text, length));
+}
+
+function tailSlice(text, length) {
+  return text.slice(cutAfter(text, Math.max(0, text.length - length)));
+}
+
 export function genericTruncate(text, config) {
   const lines = dedupeConsecutive(splitLines(text));
   const maxLines = config.ultraCompact ? Math.min(config.maxLines, 80) : config.maxLines;
@@ -70,12 +87,12 @@ export function genericTruncate(text, config) {
 
   let output = selected.join('\n');
   if (output.length > maxChars) {
+    const dropped = output.length - maxChars;
     if (config.preserveTail) {
       const head = Math.floor(maxChars * headShare);
-      const tail = maxChars - head;
-      output = `${output.slice(0, head)}\n... (${output.length - maxChars} chars truncated)\n${output.slice(-tail)}`;
+      output = `${headSlice(output, head)}\n... (${dropped} chars truncated)\n${tailSlice(output, maxChars - head)}`;
     } else {
-      output = `${output.slice(0, maxChars)}\n... (${output.length - maxChars} chars truncated)`;
+      output = `${headSlice(output, maxChars)}\n... (${dropped} chars truncated)`;
     }
     truncated = true;
   }

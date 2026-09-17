@@ -1,4 +1,7 @@
 // GENERATED FILE - do not edit. Source: src/runner.js (npm run sync:engine)
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { isProbablyBinary } from './utils.js';
 
@@ -82,36 +85,102 @@ export function commandForTest(command, args = []) {
   };
 }
 
+// Output is captured to a file, so it is bounded by disk rather than memory.
+// Still cap what is read back: the point is to shrink output, and no filter
+// needs hundreds of megabytes to find the failure. Keep the head and the tail,
+// because a command explains itself at the end.
+const MAX_CAPTURE_BYTES = 32 * 1024 * 1024;
+
+function readCapture(file) {
+  let bytes = 0;
+  try {
+    bytes = fs.statSync(file).size;
+  } catch {
+    return { buffer: Buffer.alloc(0), truncated: false, bytes: 0 };
+  }
+
+  if (bytes <= MAX_CAPTURE_BYTES) {
+    try {
+      return { buffer: fs.readFileSync(file), truncated: false, bytes };
+    } catch {
+      return { buffer: Buffer.alloc(0), truncated: false, bytes };
+    }
+  }
+
+  const half = Math.floor(MAX_CAPTURE_BYTES / 2);
+  const head = Buffer.alloc(half);
+  const tail = Buffer.alloc(half);
+  const handle = fs.openSync(file, 'r');
+  try {
+    fs.readSync(handle, head, 0, half, 0);
+    fs.readSync(handle, tail, 0, half, bytes - half);
+  } finally {
+    fs.closeSync(handle);
+  }
+
+  const marker = Buffer.from(`\n... (${bytes - MAX_CAPTURE_BYTES} bytes of output dropped)\n`, 'utf8');
+  return { buffer: Buffer.concat([head, marker, tail]), truncated: true, bytes };
+}
+
 export function runCommand(command, args) {
   const started = process.hrtime.bigint();
   const resolved = commandForTest(command, args);
-  const result = spawnSync(resolved.command, resolved.args, {
-    encoding: null,
-    maxBuffer: 64 * 1024 * 1024,
-    ...resolved.options,
-    // Hand our stdin straight to the child so `producer | sesshush consumer`
-    // works. Reading it here instead would block forever whenever stdin is an
-    // open pipe that never closes, which is the normal case under CI and agent
-    // harnesses. stdout/stderr stay piped so they can still be filtered.
-    stdio: ['inherit', 'pipe', 'pipe'],
-    env: { ...process.env, SESSHUSH_ACTIVE: '1' }
-  });
+  const capture = path.join(
+    os.tmpdir(),
+    `sesshush-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.out`
+  );
+
+  let fd = null;
+  let result;
+  let combined = Buffer.alloc(0);
+  let captureTruncated = false;
+  let capturedBytes = 0;
+
+  try {
+    fd = fs.openSync(capture, 'w');
+    result = spawnSync(resolved.command, resolved.args, {
+      ...resolved.options,
+      // Point stdout and stderr at one file rather than two pipes. Two pipes
+      // lose the interleaving (all stdout then all stderr, so an error is
+      // detached from the line it followed), and a pipe is capped by maxBuffer,
+      // which made any command producing more than 64MB fail outright with
+      // ENOBUFS even when the command itself had succeeded.
+      //
+      // stdin is inherited so `producer | sesshush consumer` works; reading it
+      // here would block forever on a pipe that never closes.
+      stdio: ['inherit', fd, fd],
+      env: { ...process.env, SESSHUSH_ACTIVE: '1' }
+    });
+    fs.closeSync(fd);
+    fd = null;
+
+    const captured = readCapture(capture);
+    combined = captured.buffer;
+    captureTruncated = captured.truncated;
+    capturedBytes = captured.bytes;
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch { /* already closed */ }
+    }
+    try { fs.unlinkSync(capture); } catch { /* best effort */ }
+  }
+
   const ended = process.hrtime.bigint();
   const durationMs = Number(ended - started) / 1_000_000;
-
-  const stdoutBuffer = result.stdout || Buffer.alloc(0);
-  const stderrBuffer = result.stderr || Buffer.alloc(0);
-  const combined = Buffer.concat([stdoutBuffer, stderrBuffer]);
   const binary = isProbablyBinary(combined);
 
   return {
-    stdout: stdoutBuffer.toString('utf8'),
-    stderr: stderrBuffer.toString('utf8'),
+    // stdout and stderr are no longer separable: they are one ordered stream.
+    // Callers concatenate them anyway, and the order is what an agent needs.
+    stdout: combined.toString('utf8'),
+    stderr: '',
     rawBuffer: combined,
     status: typeof result.status === 'number' ? result.status : 1,
     signal: result.signal,
     error: result.error,
     durationMs,
-    binary
+    binary,
+    captureTruncated,
+    capturedBytes
   };
 }

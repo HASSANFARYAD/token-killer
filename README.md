@@ -98,7 +98,14 @@ The hook currently wraps `git`, `rg`, `grep`, `pytest`, and `npm`. It avoids rec
   `--long`) to keep git's output as-is.
 - `git diff`: filenames, hunk headers, changes, and limited context.
 - `rg` / `grep`: grouped by file with capped matches per file.
-- `pytest` / `npm test`: failures, tracebacks, error lines, and summaries.
+- `read` / `cat`: file content with runs of blank lines collapsed. Comments are
+  kept — they carry intent an agent needs. Set `stripComments: true` in config
+  to remove them.
+- compilers and linters (`dotnet`, `cargo`, `go`, `tsc`, `eslint`, `mvn`,
+  `gradle`, `make`, `ruff`, `mypy`): diagnostics with their file/line positions
+  and code snippets, dropping restore/download/progress noise.
+- test runners (`pytest`, `npm test`, `jest`, `vitest`, `mocha`, `node --test`,
+  `tox`): failures, tracebacks, error lines, and summaries.
 - fallback: deduplicate repeated lines and truncate by configured thresholds.
 
 ## Failed commands
@@ -125,6 +132,18 @@ works:
 cat access.log | sesshush grep ERROR
 ```
 
+## Turning it off
+
+Set `SESSHUSH_DISABLE=1` and the shell hook runs the real command untouched, so
+you can compare exact output without uninstalling anything:
+
+```sh
+SESSHUSH_DISABLE=1 git status
+```
+
+Remove the hook entirely with `sesshush uninstall`. That strips only sesshush's
+own marked block; the rest of your shell profile is left byte-for-byte intact.
+
 ## Config
 
 Config lives at:
@@ -143,6 +162,7 @@ Defaults:
   "matchesPerFile": 8,
   "diffContextLines": 2,
   "ultraCompact": false,
+  "stripComments": false,
   "telemetry": false,
   "colors": true
 }

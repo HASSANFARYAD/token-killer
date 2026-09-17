@@ -430,10 +430,20 @@ function findOutput(output, config) {
   };
 }
 
+// Reading a file used to delete every line starting with //, # or --. That
+// silently dropped licence headers, TODO/compliance notes and, because "# " is
+// also a Markdown H1, document titles — while `## ` survived, so the damage was
+// inconsistent as well as invisible. An agent that reads a file in order to
+// edit it then works from mutilated content.
+//
+// Comments are content. They are kept by default; stripComments re-enables the
+// old behaviour for callers who genuinely want it.
 function readOutput(output, config) {
   const lines = splitLines(output);
   const filtered = [];
   let blank = false;
+  let stripped = 0;
+
   for (const raw of lines) {
     const line = raw.trimEnd();
     const trimmed = line.trim();
@@ -443,20 +453,29 @@ function readOutput(output, config) {
       continue;
     }
     blank = false;
-    if (/^(\/\/|#|--)\s/.test(trimmed)) continue;
-    if (/^\/\*|\*\/$/.test(trimmed)) continue;
+    if (config.stripComments) {
+      if (/^(\/\/|#|--)\s/.test(trimmed) || /^\/\*|\*\/$/.test(trimmed)) {
+        stripped += 1;
+        continue;
+      }
+    }
     filtered.push(line);
   }
+
   const result = genericTruncate(filtered.join('\n'), config);
   return {
     ...result,
     explain: {
-      filter: 'read',
+      filter: config.stripComments ? 'read (comments stripped)' : 'read',
       originalLines: lines.length,
       outputLines: splitLines(result.text).filter(Boolean).length,
-      kept: ['non-comment content', 'single blank-line separators'],
-      omitted: ['simple line comments', 'repeated blank lines', 'block comment delimiters'],
-      omittedLines: Math.max(0, lines.length - filtered.length)
+      kept: config.stripComments
+        ? ['non-comment content', 'single blank-line separators']
+        : ['file content including comments', 'single blank-line separators'],
+      omitted: config.stripComments
+        ? ['line comments', 'repeated blank lines', 'block comment delimiters']
+        : ['repeated blank lines'],
+      omittedLines: Math.max(0, lines.length - filtered.length - (stripped ? 0 : 0))
     }
   };
 }
@@ -556,7 +575,7 @@ function testOutput(output, config) {
 // surface errors, failing assertions and tracebacks rather than to summarize a
 // successful result. Every other filter would risk hiding the reason for the
 // failure (`gitOk`, for instance, reduces output to "ok push").
-const FAILURE_SAFE_FILTERS = new Set([testOutput]);
+const FAILURE_SAFE_FILTERS = new Set([testOutput, buildOutput]);
 
 export function isFailureSafe(filter) {
   return FAILURE_SAFE_FILTERS.has(filter);
@@ -579,7 +598,85 @@ function dispatch(command, args) {
   if (base === 'npm' && args[0] === 'test') return testOutput;
   if (base === 'npm' && args[0] === 'run' && ['build', 'test'].includes(args[1])) return testOutput;
   if ((base === 'pnpm' || base === 'yarn') && ['test', 'build'].includes(args[0])) return testOutput;
+
+  // Dedicated JS test runners.
+  if (['jest', 'vitest', 'mocha', 'ava', 'karma', 'cypress', 'playwright'].includes(base)) return testOutput;
+  if ((base === 'npx' || base === 'pnpm' || base === 'yarn') && ['jest', 'vitest', 'mocha', 'ava'].includes(args[0])) return testOutput;
+  // node --test
+  if (base === 'node' && args.includes('--test')) return testOutput;
+  // Python runners beyond pytest.
+  if (base === 'tox' || base === 'nox') return testOutput;
+  if (base === 'python' && args[0] === '-m' && ['pytest', 'unittest'].includes(args[1])) return testOutput;
+
+  // Compilers, build tools and linters: diagnostics, not pass/fail lists.
+  if (base === 'dotnet' && ['build', 'test', 'run', 'publish', 'restore'].includes(args[0])) return buildOutput;
+  if (base === 'cargo' && ['build', 'test', 'check', 'clippy', 'run'].includes(args[0])) return buildOutput;
+  if (base === 'go' && ['build', 'test', 'vet', 'run'].includes(args[0])) return buildOutput;
+  if (base === 'mvn' || base === 'mvnw') return buildOutput;
+  if (base === 'gradle' || base === 'gradlew') return buildOutput;
+  if (base === 'tsc' || base === 'eslint' || base === 'ruff' || base === 'flake8' || base === 'mypy' || base === 'pylint') return buildOutput;
+  if (base === 'make' || base === 'cmake' || base === 'ninja') return buildOutput;
+  if (base === 'npx' && ['tsc', 'eslint'].includes(args[0])) return buildOutput;
+  if ((base === 'npm' || base === 'pnpm' || base === 'yarn') && args[0] === 'run'
+    && ['lint', 'typecheck', 'type-check', 'compile'].includes(args[1])) return buildOutput;
+
   return null;
+}
+
+// Compiler and linter output cannot go through testOutput: a Go, Rust or
+// TypeScript diagnostic ("./main.go:5:2: undefined: foo") contains none of the
+// FAIL/ERROR keywords that filter looks for, so every error would be dropped as
+// "non-failing". Match the diagnostic shape instead — file:line:col or
+// file(line,col) — plus explicit error/warning wording and count summaries.
+const DIAGNOSTIC_LOCATION = /(?:^|\s)(?:[A-Za-z]:)?[^\s:()]+(?::\d+(?::\d+)?:|\(\d+(?:,\d+)?\):)/;
+const DIAGNOSTIC_WORDS = /\b(error|errors|warning|warnings|failed|failure|fatal|cannot|undefined|unresolved|panic|exception|expected|required)\b/i;
+const DIAGNOSTIC_SUMMARY = /\b\d+\s+(error|warning|problem|issue|test|failure)s?\b/i;
+
+function buildOutput(output, config) {
+  const lines = splitLines(output);
+  const kept = [];
+  let dropped = 0;
+  let keptPrevious = false;
+
+  for (const line of lines) {
+    const plain = normalizeLine(line);
+    if (!plain) {
+      keptPrevious = false;
+      continue;
+    }
+
+    const isDiagnostic = DIAGNOSTIC_LOCATION.test(plain)
+      || DIAGNOSTIC_WORDS.test(plain)
+      || DIAGNOSTIC_SUMMARY.test(plain);
+    // A diagnostic is followed by a snippet showing the offending code, drawn
+    // with a gutter ("4 | let x: i32 = ...") and a caret row. Those lines carry
+    // the detail, so stay inside the block until it ends.
+    const isGutter = /^\s*\d*\s*\|/.test(line);
+    const isContinuation = keptPrevious && (/^\s/.test(line) || isGutter);
+
+    if (isDiagnostic || isContinuation) {
+      kept.push(line);
+      keptPrevious = true;
+      continue;
+    }
+
+    dropped += 1;
+    keptPrevious = false;
+  }
+
+  if (dropped) kept.push(`... (${dropped} progress lines omitted)`);
+  const result = genericTruncate(kept.join('\n'), config);
+  return {
+    ...result,
+    explain: {
+      filter: 'build output',
+      originalLines: lines.filter(Boolean).length,
+      outputLines: splitLines(result.text).filter(Boolean).length,
+      kept: ['diagnostics with file/line positions', 'error and warning lines', 'counts and summaries'],
+      omitted: ['download, restore and progress noise'],
+      omittedLines: dropped
+    }
+  };
 }
 
 export function classify(command, args = [], { failed = false } = {}) {

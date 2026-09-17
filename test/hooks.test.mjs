@@ -101,3 +101,48 @@ test('PowerShell install writes Core and Windows PowerShell profiles', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('install then uninstall leaves an existing profile byte-for-byte intact', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sesshush-profile-'));
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalConfigHome = process.env.XDG_CONFIG_HOME;
+  const profile = path.join(tmp, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+  const existing = '# My important profile\nSet-Alias ll Get-ChildItem\n$env:MY_VAR = "keep me"\n';
+
+  try {
+    process.env.USERPROFILE = tmp;
+    process.env.XDG_CONFIG_HOME = path.join(tmp, '.config');
+    fs.mkdirSync(path.dirname(profile), { recursive: true });
+    fs.writeFileSync(profile, existing);
+
+    installHook({ shell: 'powershell', command: 'sesshush' });
+    assert.match(fs.readFileSync(profile, 'utf8'), /function global:git/);
+
+    uninstallHook({ shell: 'powershell' });
+    assert.equal(fs.readFileSync(profile, 'utf8'), existing, 'uninstall damaged the user profile');
+  } finally {
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalConfigHome;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('installing twice does not duplicate the wrapper', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sesshush-twice-'));
+  const originalUserProfile = process.env.USERPROFILE;
+
+  try {
+    process.env.USERPROFILE = tmp;
+    const install = installHook({ shell: 'powershell', command: 'sesshush' });
+    installHook({ shell: 'powershell', command: 'sesshush' });
+
+    const body = fs.readFileSync(install.profiles[0], 'utf8');
+    assert.equal((body.match(/function global:git/g) || []).length, 1);
+  } finally {
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

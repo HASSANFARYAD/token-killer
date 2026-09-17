@@ -46,7 +46,10 @@ test('happy path filters noisy command output and records positive token savings
   const configHome = makeTempHome('cli-config');
   const fixtureDir = makeTempHome('cli-fixture');
   const fixturePath = path.join(fixtureDir, 'noisy-output.txt');
-  const noisyLines = Array.from({ length: 160 }, (_, index) => `# generated noisy line ${index}`);
+  // Repeated identical lines, which the fallback compressor collapses. The
+  // fixture used to be comments, which only shrank because the read filter
+  // deleted them — it no longer does, because comments are content.
+  const noisyLines = Array.from({ length: 160 }, () => 'generated noisy line');
   fs.writeFileSync(fixturePath, [...noisyLines, '', '', 'meaningful result'].join('\n'));
 
   const result = spawnSync(process.execPath, [cliPath, 'read', fixturePath], {
@@ -63,7 +66,7 @@ test('happy path filters noisy command output and records positive token savings
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /meaningful result/);
-  assert.doesNotMatch(result.stdout, /generated noisy line/);
+  assert.match(result.stdout, /repeated 159x/);
 
   const analyticsPath = path.join(dataHome, 'sesshush', 'analytics.json');
   const analytics = JSON.parse(fs.readFileSync(analyticsPath, 'utf8'));

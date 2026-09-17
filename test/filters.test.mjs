@@ -23,8 +23,14 @@ test('Get-Content uses the read filter', () => {
 
   assert.match(result.text, /value one/);
   assert.match(result.text, /value two/);
-  assert.doesNotMatch(result.text, /comment/);
+  // Comments are content: a licence header or a TODO must survive a read.
+  assert.match(result.text, /# comment/);
+  // Runs of blank lines still collapse to one.
+  assert.doesNotMatch(result.text, /\n\n\n/);
   assert.equal(result.explain.filter, 'read');
+
+  const stripped = filterOutput('Get-Content', ['-Raw', 'file.txt'], output, { ...config, stripComments: true });
+  assert.doesNotMatch(stripped.text, /comment/);
 });
 
 test('Get-ChildItem compacts PowerShell directory output', () => {

@@ -11,6 +11,7 @@ export const DEFAULT_CONFIG = {
   matchesPerFile: 8,
   diffContextLines: 2,
   ultraCompact: false,
+  stripComments: false,
   telemetry: false,
   colors: true
 };
